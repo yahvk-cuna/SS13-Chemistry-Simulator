@@ -45,9 +45,10 @@
 | [src/engine/types.ts](file:///home/yahvk/ss13-chem-sim/src/engine/types.ts) | 全部引擎数据结构：`DeliveryMethod`、`ReagentCategory`、`MobStat`、`OrganSlot`、`ReagentDef`、`ReagentInstance`、`SimContext`、`DoseEvent`、`PatientConfig`、`SimMutableState`、`TickSnapshot`、`SimEvent`、`SimSummary`（含 `triggeredDangerReactions`）、`SimResult`、`SimPreset` |
 | [src/engine/rng.ts](file:///home/yahvk/ss13-chem-sim/src/engine/rng.ts) | `createRng`（Mulberry32 确定性伪随机）、`sptProbRate`（对应 BYOND `SPT_PROB_RATE`: `1 - (1 - p)^dt`） |
 | [src/engine/reactions.ts](file:///home/yahvk/ss13-chem-sim/src/engine/reactions.ts) | `runInBodyReactions(ctx)`：彭斯莱特+肾上腺素/阿托品体内爆炸清血、代谢因子+营养物→治疗肽、抑制因子+营养物→朊病毒肽 |
-| [src/engine/reagents.ts](file:///home/yahvk/ss13-chem-sim/src/engine/reagents.ts) | 全部内置试剂定义与生命周期钩子（`exposeMob` / `onMobAdd` / `onMobMetabolize` / `onMobLife` / `onMobDead` / `overdoseStart` / `overdoseProcess` / `onMobEndMetabolize` / `onMobDelete` / `metabolizeReagent`）、`REAGENT_LIST`、`REAGENTS`、`CATEGORY_LABELS`、`getDisplayColor`、`computeEffectiveOD` |
+| [src/engine/reagents.ts](file:///home/yahvk/ss13-chem-sim/src/engine/reagents.ts) | 全部内置试剂定义与生命周期钩子（`exposeMob` / `onMobAdd` / `onMobMetabolize` / `onMobLife` / `onMobDead` / `overdoseStart` / `overdoseProcess` / `onMobEndMetabolize` / `onMobDelete` / `metabolizeReagent`）、`REAGENT_LIST`、`REAGENTS`、`MECHANISM_TRAITS`、`EFFECT_TRAITS`、`getReagentTraits`、`getDisplayColor`、`computeEffectiveOD` |
 | [src/engine/simulator.ts](file:///home/yahvk/ss13-chem-sim/src/engine/simulator.ts) | `runSimulation(patient, doses, options)`：12 步 Tick 主循环、`addToHolder`（加权纯度/pH 与入体逆纯度转化）、`computeStat`、`organStatusLabel`、`syncTraits` 及事件/汇总生成 |
 | [src/engine/presets.ts](file:///home/yahvk/ss13-chem-sim/src/engine/presets.ts) | `makeBasePatient` 与典型医疗对抗预设 `SIM_PRESETS` |
+| [src/engine/regimenStorage.ts](file:///home/yahvk/ss13-chem-sim/src/engine/regimenStorage.ts) | 给药方案存档持久化与默认剂量工具：`createDefaultDose`、`cloneRegimenDoses`、`sanitizeDoseEvent`、`createOrUpdateSavedRegimen`、`serializeRegimensJson`、`parseRegimensJson`、`loadSavedRegimensFromStorage`、`saveRegimensToStorage` |
 | [src/engine/__tests__/simulator.test.ts](file:///home/yahvk/ss13-chem-sim/src/engine/__tests__/simulator.test.ts) | Vitest 核心机制回归测试套件 |
 
 ### 2.3 前端界面组件（`src/components/`）
@@ -56,13 +57,12 @@
 | :--- | :--- |
 | [src/components/HeaderBar.tsx](file:///home/yahvk/ss13-chem-sim/src/components/HeaderBar.tsx) | 顶部栏：预设选择、模拟时长（60–600s）、期望/随机模式与种子、`固定对比基准`、`药品图鉴`开关 |
 | [src/components/PatientPanel.tsx](file:///home/yahvk/ss13-chem-sim/src/components/PatientPanel.tsx) | 患者初始状态：五维伤害滑块、一键伤势预设、7 个器官损伤与 6 种肝脏型号、血量/出血/伤口等级、体温与环境（标准/低温仓/高温/真空） |
-| [src/components/RegimenPanel.tsx](file:///home/yahvk/ss13-chem-sim/src/components/RegimenPanel.tsx) | 多药组合方案与预检警告横幅（彭斯莱特禁忌爆炸、纯度逆反应预警、木泰尔稀释建议、静脉滴注速率/剂量/纯度/温度调节） |
-| [src/components/ReagentPickerModal.tsx](file:///home/yahvk/ss13-chem-sim/src/components/ReagentPickerModal.tsx) | 试剂弹窗选择器，支持中文名/英文名/别名/治疗目标检索与 6 分类过滤 |
+| [src/components/RegimenPanel.tsx](file:///home/yahvk/ss13-chem-sim/src/components/RegimenPanel.tsx) | 多药组合方案、可折叠方案存档管理区（两行窄栏排版、二次确认覆盖/删除/清空、复制当前/导出全部/导入 JSON）、常用速添与药名自定义暗色悬浮提示、单卡折叠与纯度快切、打开图鉴选药库以及配伍预检横幅 |
 | [src/components/SummaryStrip.tsx](file:///home/yahvk/ss13-chem-sim/src/components/SummaryStrip.tsx) | 5 张 KPI 总结卡：终末 HP 与 `STAT_ZH` 徽章（含基准对比差值）、康复/死亡/危急累计耗时、四维净治疗量、峰值器官损伤、药理风险警报 |
 | [src/components/TimelineCharts.tsx](file:///home/yahvk/ss13-chem-sim/src/components/TimelineCharts.tsx) | 原生 SVG 多图联动看板（生命值+五维伤势演化、血液实线/胃部虚线浓度曲线、器官损伤%/体温血量切换）、倍速回放与时间轴拖拽 |
 | [src/components/TickInspector.tsx](file:///home/yahvk/ss13-chem-sim/src/components/TickInspector.tsx) | 选中 Tick 的生理切片检视（HP 进度条、血量/体表温/核心温/伤口计数、7 器官状态条、`TRAIT_LABELS`、血液/胃内/缓释余量） |
 | [src/components/EventLog.tsx](file:///home/yahvk/ss13-chem-sim/src/components/EventLog.tsx) | 按`全部 / 致命过量 / 警告以上 / 转化反应 / 给药记录`筛选，点击条目直接跳转对应 Tick |
-| [src/components/HandbookModal.tsx](file:///home/yahvk/ss13-chem-sim/src/components/HandbookModal.tsx) | 天关13 药物与试剂百科图鉴弹窗（展示精准代谢率、过量阈值、逆阈值与源码机理备注） |
+| [src/components/HandbookModal.tsx](file:///home/yahvk/ss13-chem-sim/src/components/HandbookModal.tsx) | 统一的药品图鉴与选药库弹窗（顶部图鉴入口与「添加药品」共用）：吸顶检索与表头、机制安全+作用特征双组多选交集筛选、源码特性标签、可点击逆产物跳转、代谢/OD 排序、`+ 加入`（支持「加入后关闭」或连续添加）及 `Esc` 关闭 |
 
 ---
 
@@ -227,3 +227,5 @@
   - `bun run build`：生产构建成功
   - 浏览器实机（`1440×900` 与 `1280×800`）：控制台 0 报错，预设切换、加药搜索、SVG 图表交互与回放、事件日志跳转、药理图鉴及危险警报卡片均正常渲染。
 - **贴片与上游缓存同步**：给药方式对齐 ChemMaster / 管道压药机行为（`PATCH` 速率 `0.75u/t`，合成肉默认 `TOUCH`），并补全贴片与制药机器的上游检索缓存至第 3.6 节。
+- **给药组合方案存档功能**：新增 [regimenStorage.ts](file:///home/yahvk/ss13-chem-sim/src/engine/regimenStorage.ts) 并扩展 [RegimenPanel.tsx](file:///home/yahvk/ss13-chem-sim/src/components/RegimenPanel.tsx)，支持仅针对给药组合（`DoseEvent[]`）的 `localStorage` 本地存档（命名/自动命名保存、替换加载、追加合并、同名或指定覆盖、删除）以及剪贴板/文件 JSON 导入导出。
+- **统一药品图鉴与选药库及特征筛选升级**：统一收敛全库 `targets` 为规范特征词表（`EFFECT_TRAITS` + `逆产物`），并在 [reagents.ts](file:///home/yahvk/ss13-chem-sim/src/engine/reagents.ts) 导出 `getReagentTraits` 自动派生机制安全特征（`治疗药物`、`无过量(无OD)`、`有过量(OD)`、`有逆反应`、`无肝可代`、`死后生效`、`毒素/有害`、`逆产物`）；顶栏「药品图鉴」、给药面板「添加药品」与药卡详参入口共用统一的 [HandbookModal.tsx](file:///home/yahvk/ss13-chem-sim/src/components/HandbookModal.tsx)，支持机制安全 + 作用特征多选交集筛选、逆产物直跳、代谢/OD 排序及 `+ 加入`（含「加入后关闭」开关与 `Esc` 关闭）。

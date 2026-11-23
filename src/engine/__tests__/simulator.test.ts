@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { SIM_PRESETS, makeBasePatient } from '../presets';
+import { EFFECT_TRAITS, REAGENTS, REAGENT_LIST, getReagentTraits } from '../reagents';
+import {
+  cloneRegimenDoses,
+  createDefaultDose,
+  createOrUpdateSavedRegimen,
+  parseRegimensJson,
+  serializeRegimensJson,
+} from '../regimenStorage';
 import { runSimulation } from '../simulator';
 import type { DoseEvent } from '../types';
 
@@ -215,5 +223,89 @@ describe('Tianguan13 Pharmacology Simulator', () => {
         expect(Number.isFinite(s.bloodVolume)).toBe(true);
       }
     }
+  });
+
+  it('saves, overwrites, clones with fresh IDs, and imports/exports regimens via JSON', () => {
+    const initialDoses = [
+      dose('libital', 15, { purity: 0.75 }),
+      dose('lenturi', 15, { purity: 0.75 }),
+    ];
+
+    // Auto-named save
+    const firstSave = createOrUpdateSavedRegimen([], '', initialDoses);
+    expect(firstSave.list.length).toBe(1);
+    expect(firstSave.saved.name).toBe('利比特 + 伦图里');
+    expect(firstSave.saved.doses.length).toBe(2);
+
+    // Overwrite by same name
+    const updatedDoses = [dose('sal_acid', 20, { purity: 1.0 })];
+    const overwritten = createOrUpdateSavedRegimen(firstSave.list, '利比特 + 伦图里', updatedDoses);
+    expect(overwritten.list.length).toBe(1);
+    expect(overwritten.saved.id).toBe(firstSave.saved.id);
+    expect(overwritten.saved.doses.length).toBe(1);
+    expect(overwritten.saved.doses[0].reagentId).toBe('sal_acid');
+
+    // Cloning assigns fresh unique DoseEvent IDs for replace/append
+    const clonedA = cloneRegimenDoses(overwritten.saved.doses);
+    const clonedB = cloneRegimenDoses(overwritten.saved.doses);
+    expect(clonedA[0].id).not.toBe(clonedB[0].id);
+
+    // JSON export & import roundtrip + invalid reagent filtering
+    const json = serializeRegimensJson(overwritten.list);
+    const reimported = parseRegimensJson(json);
+    expect(reimported.length).toBe(1);
+    expect(reimported[0].name).toBe('利比特 + 伦图里');
+    expect(reimported[0].doses[0].reagentId).toBe('sal_acid');
+
+    const rawDoseJson = JSON.stringify([
+      { reagentId: 'oxandrolone', volume: 18, method: 'INJECT', purity: 1 },
+      { reagentId: 'unknown_fake_chem', volume: 10 },
+    ]);
+    const fromRawArray = parseRegimensJson(rawDoseJson);
+    expect(fromRawArray.length).toBe(1);
+    expect(fromRawArray[0].doses.length).toBe(1);
+    expect(fromRawArray[0].doses[0].reagentId).toBe('oxandrolone');
+
+    // Overwrite by targetId preserves explicit target name
+    const overwriteById = createOrUpdateSavedRegimen(overwritten.list, '利比特 + 伦图里', fromRawArray[0].doses, firstSave.saved.id);
+    expect(overwriteById.saved.id).toBe(firstSave.saved.id);
+    expect(overwriteById.saved.name).toBe('利比特 + 伦图里');
+    expect(overwriteById.saved.doses[0].reagentId).toBe('oxandrolone');
+
+    // Default dose presets: 100% purity, INGEST for probital, PATCH for others
+    const dSynth = createDefaultDose(REAGENTS.synthflesh);
+    expect(dSynth.method).toBe('PATCH');
+    expect(dSynth.purity).toBe(1);
+
+    const dProbital = createDefaultDose(REAGENTS.probital);
+    expect(dProbital.method).toBe('INGEST');
+    expect(dProbital.purity).toBe(1);
+
+    const dSyriniver = createDefaultDose(REAGENTS.syriniver);
+    expect(dSyriniver.method).toBe('PATCH');
+    expect(dSyriniver.purity).toBe(1);
+    expect(dSyriniver.volume).toBe(5);
+
+    const dLibital = createDefaultDose(REAGENTS.libital);
+    expect(dLibital.method).toBe('PATCH');
+    expect(dLibital.purity).toBe(1);
+    expect(dLibital.volume).toBe(15);
+  });
+
+  it('normalizes reagent targets and derives consistent mechanism traits', () => {
+    const allowedTargets = new Set<string>([...EFFECT_TRAITS, '逆产物']);
+    for (const r of REAGENT_LIST) {
+      expect(r.targets.length).toBeGreaterThan(0);
+      for (const t of r.targets) {
+        expect(allowedTargets.has(t)).toBe(true);
+        expect(t.includes('测试')).toBe(false);
+      }
+    }
+
+    const neurineTraits = getReagentTraits(REAGENTS.neurine);
+    expect(neurineTraits).toContain('大脑');
+    expect(neurineTraits).toContain('死后生效');
+    expect(neurineTraits).toContain('无肝可代');
+    expect(neurineTraits).toContain('有逆反应');
   });
 });

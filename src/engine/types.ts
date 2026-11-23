@@ -143,6 +143,13 @@ export interface DoseEvent {
   enabled: boolean;
 }
 
+export interface SavedRegimen {
+  id: string;
+  name: string;
+  updatedAt: number;
+  doses: DoseEvent[];
+}
+
 export interface PatientConfig {
   brute: number;
   burn: number;

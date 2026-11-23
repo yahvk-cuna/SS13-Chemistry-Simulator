@@ -8,8 +8,9 @@ import { SummaryStrip } from './components/SummaryStrip';
 import { TickInspector } from './components/TickInspector';
 import { TimelineCharts } from './components/TimelineCharts';
 import { SIM_PRESETS } from './engine/presets';
+import { createDefaultDose } from './engine/regimenStorage';
 import { runSimulation } from './engine/simulator';
-import type { DoseEvent, PatientConfig, RngMode, SimResult } from './engine/types';
+import type { DoseEvent, PatientConfig, ReagentDef, RngMode, SimResult } from './engine/types';
 
 function clonePatient(p: PatientConfig): PatientConfig {
   return { ...p, organs: { ...p.organs } };
@@ -34,6 +35,15 @@ export function App() {
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [playSpeed, setPlaySpeed] = useState<number>(4);
   const [handbookOpen, setHandbookOpen] = useState<boolean>(false);
+  const [handbookQuery, setHandbookQuery] = useState<string>('');
+
+  const doseCountsByReagent = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const d of doses) {
+      counts[d.reagentId] = (counts[d.reagentId] ?? 0) + 1;
+    }
+    return counts;
+  }, [doses]);
 
   const result = useMemo(
     () => runSimulation(patient, doses, { durationSeconds, rngMode, seed }),
@@ -84,6 +94,11 @@ export function App() {
     setDoses(next);
   };
 
+  const handleAddReagent = (def: ReagentDef) => {
+    setActivePresetId('custom');
+    setDoses((prev) => [...prev, createDefaultDose(def)]);
+  };
+
   const activePreset = SIM_PRESETS.find((p) => p.id === activePresetId);
   const currentSnap =
     result.snapshots[Math.min(result.snapshots.length - 1, Math.max(0, Math.round(selectedTime / 2)))] ??
@@ -103,7 +118,10 @@ export function App() {
         onSeedChange={setSeed}
         hasBaseline={baselineResult !== null}
         onToggleBaseline={() => setBaselineResult((prev) => (prev ? null : result))}
-        onOpenHandbook={() => setHandbookOpen(true)}
+        onOpenHandbook={() => {
+          setHandbookQuery('');
+          setHandbookOpen(true);
+        }}
       />
 
       <main className="workspace-grid">
@@ -116,7 +134,18 @@ export function App() {
             </div>
           )}
           <PatientPanel patient={patient} onChange={handlePatientChange} />
-          <RegimenPanel doses={doses} onChange={handleDosesChange} />
+          <RegimenPanel
+            doses={doses}
+            onChange={handleDosesChange}
+            onOpenReagentLibrary={() => {
+              setHandbookQuery('');
+              setHandbookOpen(true);
+            }}
+            onInspectReagent={(def) => {
+              setHandbookQuery(def.zhName);
+              setHandbookOpen(true);
+            }}
+          />
         </div>
 
         {/* Center Column: Summary KPIs & Synchronized Interactive Charts */}
@@ -160,7 +189,13 @@ export function App() {
         </div>
       </main>
 
-      <HandbookModal open={handbookOpen} onClose={() => setHandbookOpen(false)} />
+      <HandbookModal
+        open={handbookOpen}
+        onClose={() => setHandbookOpen(false)}
+        initialQuery={handbookQuery}
+        onAddReagent={handleAddReagent}
+        addedCounts={doseCountsByReagent}
+      />
     </div>
   );
 }

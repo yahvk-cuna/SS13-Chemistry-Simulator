@@ -21,6 +21,7 @@ import {
   autoPackPatchGroups,
 } from '../regimenStorage';
 import {
+  REAGENT_SHARE_ORDER,
   buildScenarioShareUrl,
   createBlankScenario,
   decodeScenarioPayload,
@@ -242,14 +243,35 @@ describe('Tianguan13 Pharmacology Simulator', () => {
     expect(res.snapshots[1].brute).toBeCloseTo(40, 2);
   });
 
-  it('encodes and decodes blank and complex scenarios cleanly via shareable URLs', () => {
+  it('encodes and decodes blank and complex scenarios cleanly via compact binary shareable URLs', () => {
+    expect(new Set(REAGENT_SHARE_ORDER).size).toBe(REAGENT_LIST.length);
+    for (const r of REAGENT_LIST) {
+      expect(REAGENT_SHARE_ORDER).toContain(r.id);
+    }
+
     const blank = createBlankScenario();
     const blankPayload = encodeScenarioPayload(blank);
+    expect(blankPayload).toBe('AQ');
+    expect(blankPayload.length).toBeLessThanOrEqual(4);
     const decodedBlank = decodeScenarioPayload(blankPayload);
     expect(decodedBlank.patient).toEqual(blank.patient);
     expect(decodedBlank.doses).toEqual([]);
     expect(decodedBlank.durationSeconds).toBe(180);
     expect(decodedBlank.rngMode).toBe('expected');
+
+    const typical: SimScenario = {
+      patient: makeBasePatient({ brute: 55, burn: 45, tox: 20, oxy: 15 }),
+      doses: [
+        dose('libital', 15, { method: 'PATCH', startTime: 0, purity: 1.0, patchGroup: 1 }),
+        dose('lenturi', 15, { method: 'PATCH', startTime: 0, purity: 1.0, patchGroup: 1 }),
+        dose('multiver', 10, { method: 'INGEST', startTime: 0, purity: 0.75 }),
+      ],
+      durationSeconds: 180,
+      rngMode: 'expected',
+      seed: 42,
+    };
+    const typicalPayload = encodeScenarioPayload(typical);
+    expect(typicalPayload.length).toBeLessThanOrEqual(32);
 
     const complex: SimScenario = {
       patient: makeBasePatient({
@@ -289,6 +311,9 @@ describe('Tianguan13 Pharmacology Simulator', () => {
       seed: 9876,
     };
 
+    const complexPayload = encodeScenarioPayload(complex);
+    expect(complexPayload.length).toBeLessThanOrEqual(100);
+
     const shareUrl = buildScenarioShareUrl(complex, 'https://chem.example.org/sim/');
     expect(shareUrl.startsWith('https://chem.example.org/sim/#s=')).toBe(true);
 
@@ -318,12 +343,20 @@ describe('Tianguan13 Pharmacology Simulator', () => {
     });
     expect(simRes.snapshots.length).toBeGreaterThan(10);
 
-    // Also supports bare payload string and #s= fragment; rejects malformed strings cleanly
-    const fromBare = parseScenarioFromUrlOrText(encodeScenarioPayload(complex));
+    // Also supports bare payload string and #s= fragment; rejects malformed/truncated/JSON strings cleanly
+    const fromBare = parseScenarioFromUrlOrText(complexPayload);
     expect(fromBare.patient.allergies).toEqual(['sal_acid', 'atropine']);
     const badHash = tryReadScenarioFromHash('#s=invalid_payload!!!');
     expect(badHash.scenario).toBeNull();
     expect(badHash.error).toBeTruthy();
+
+    const truncatedHash = tryReadScenarioFromHash(`#s=${complexPayload.slice(0, -4)}`);
+    expect(truncatedHash.scenario).toBeNull();
+    expect(truncatedHash.error).toBeTruthy();
+
+    const legacyJson = tryReadScenarioFromHash('#s=eyJ2IjoxfQ');
+    expect(legacyJson.scenario).toBeNull();
+    expect(legacyJson.error).toBeTruthy();
   });
 
   it('simulates proportional 0.75u/t release for composite patches and pauses in stasis', () => {

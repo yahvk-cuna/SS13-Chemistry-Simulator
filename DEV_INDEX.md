@@ -66,6 +66,7 @@
 | [src/components/TickInspector.tsx](file:///home/yahvk/ss13-chem-sim/src/components/TickInspector.tsx) | 选中 Tick 的生理切片检视（HP 进度条、血量/体表温/核心温/伤口计数、7 器官状态条、`TRAIT_LABELS`、过敏发作/阻断状态、血液/胃内/缓释余量） |
 | [src/components/EventLog.tsx](file:///home/yahvk/ss13-chem-sim/src/components/EventLog.tsx) | 按`全部 / 致命过量 / 警告以上 / 转化反应 / 药物过敏 / 给药记录`筛选，点击条目直接跳转对应 Tick |
 | [src/components/HandbookModal.tsx](file:///home/yahvk/ss13-chem-sim/src/components/HandbookModal.tsx) | 统一的药品图鉴与选药库弹窗（顶部图鉴入口与「添加药品」共用）：吸顶检索与表头、机制安全（含 `无过敏`）+作用特征双组多选交集筛选、当前患者过敏标记、源码特性标签、可点击逆产物跳转、代谢/OD 排序、`+ 加入`（支持「加入后关闭」或连续添加）及 `Esc` 关闭 |
+| [src/components/AboutModal.tsx](file:///home/yahvk/ss13-chem-sim/src/components/AboutModal.tsx) | 顶栏「关于」弹窗：展示模拟器核心功能说明、Tianguan13 源码与 TG13 中文 Wiki 机制来源、本项目 GitHub 源码链接及 AGPL-3.0 协议 |
 
 ---
 
@@ -233,3 +234,4 @@
 - **场景 URL 分享/导入与纯文本配方导出**：应用默认以干净空白场景启动，新建 [scenarioShare.ts](file:///home/yahvk/ss13-chem-sim/src/engine/scenarioShare.ts) 与 [ScenarioShareModal.tsx](file:///home/yahvk/ss13-chem-sim/src/components/ScenarioShareModal.tsx) 实现 `#s=` Base64URL 差量短键场景分享、自动加载及导入重置；并在 [regimenStorage.ts](file:///home/yahvk/ss13-chem-sim/src/engine/regimenStorage.ts) 与 [RegimenPanel.tsx](file:///home/yahvk/ss13-chem-sim/src/components/RegimenPanel.tsx) 新增「导出纯文本配方」抽屉及存档卡片快捷复制按钮（支持多行清单与单行紧凑格式切换及 `.txt` 下载）。
 - **合并贴片仿真与菜谱式纯文本配方导出**：在 [constants.ts](file:///home/yahvk/ss13-chem-sim/src/engine/constants.ts)、[types.ts](file:///home/yahvk/ss13-chem-sim/src/engine/types.ts)、[simulator.ts](file:///home/yahvk/ss13-chem-sim/src/engine/simulator.ts)、[scenarioShare.ts](file:///home/yahvk/ss13-chem-sim/src/engine/scenarioShare.ts) 与 [RegimenPanel.tsx](file:///home/yahvk/ss13-chem-sim/src/components/RegimenPanel.tsx) 实现 `patchGroup` 合并贴片（同一贴片 ≤40u、避开彭斯莱特禁忌组合、按比例共享 `0.75u/tick` 释放及一键自动合片/分摊速率显示）；重构 `formatRegimenPlainText` 为直接面向容器配制与施药步骤的菜谱结构，自动合并同时间贴片（≤40u）与口服药丸（≤50u），单步骤省略时间并补全 [pill.dm](file:///home/yahvk/Tianguan13/code/modules/reagents/reagent_containers/pill.dm) 上游缓存至第 3.6 节。
 - **文档与开源协议**：新增 [README.md](file:///home/yahvk/ss13-chem-sim/README.md) 并从 `/usr/share/licenses/spdx/AGPL-3.0-or-later.txt` 复制生成 [LICENSE](file:///home/yahvk/ss13-chem-sim/LICENSE)。
+- **关于（About）弹窗**：新增 [AboutModal.tsx](file:///home/yahvk/ss13-chem-sim/src/components/AboutModal.tsx) 并在 [HeaderBar.tsx](file:///home/yahvk/ss13-chem-sim/src/components/HeaderBar.tsx) / [App.tsx](file:///home/yahvk/ss13-chem-sim/src/App.tsx) 接入「关于」入口，说明功能、上游 Tianguan13 来源并提供 GitHub 源码与 Wiki 链接。

@@ -1,5 +1,6 @@
 import { X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { AboutModal } from './components/AboutModal';
 import { EventLog } from './components/EventLog';
 import { HandbookModal } from './components/HandbookModal';
 import { HeaderBar } from './components/HeaderBar';
@@ -48,6 +49,7 @@ export function App() {
   const [handbookQuery, setHandbookQuery] = useState<string>('');
   const [shareModalOpen, setShareModalOpen] = useState<boolean>(false);
   const [shareModalNotice, setShareModalNotice] = useState<string | null>(null);
+  const [aboutOpen, setAboutOpen] = useState<boolean>(false);
   const [bannerNotice, setBannerNotice] = useState<{ type: 'good' | 'warn'; text: string } | null>(() =>
     initialBoot.hashError ? { type: 'warn', text: initialBoot.hashError } : null,
   );
@@ -208,6 +210,7 @@ export function App() {
           setHandbookQuery('');
           setHandbookOpen(true);
         }}
+        onOpenAbout={() => setAboutOpen(true)}
       />
 
       <main className="workspace-grid">
@@ -303,6 +306,8 @@ export function App() {
         onImportScenario={handleImportScenario}
         initialNotice={shareModalNotice}
       />
+
+      <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </div>
   );
 }

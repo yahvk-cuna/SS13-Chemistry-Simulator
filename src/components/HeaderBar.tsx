@@ -1,4 +1,4 @@
-import { BookOpen, Dices, Download, FlaskConical, Link2, Pin, PinOff, RotateCcw } from 'lucide-react';
+import { BookOpen, Dices, Download, FlaskConical, Info, Link2, Pin, PinOff, RotateCcw } from 'lucide-react';
 import { SCENARIO_DURATIONS } from '../engine/scenarioShare';
 import type { RngMode } from '../engine/types';
 
@@ -15,6 +15,7 @@ interface HeaderBarProps {
   onOpenImportUrl: () => void;
   onResetScenario: () => void;
   onOpenHandbook: () => void;
+  onOpenAbout: () => void;
 }
 
 export function HeaderBar({
@@ -30,6 +31,7 @@ export function HeaderBar({
   onOpenImportUrl,
   onResetScenario,
   onOpenHandbook,
+  onOpenAbout,
 }: HeaderBarProps) {
   const durationOptions = SCENARIO_DURATIONS.includes(durationSeconds as (typeof SCENARIO_DURATIONS)[number])
     ? [...SCENARIO_DURATIONS]
@@ -149,6 +151,11 @@ export function HeaderBar({
         <button type="button" className="btn btn-primary" onClick={onOpenHandbook}>
           <BookOpen size={14} />
           药品图鉴
+        </button>
+
+        <button type="button" className="btn" onClick={onOpenAbout} title="关于本模拟器、数据来源与源码链接">
+          <Info size={14} />
+          关于
         </button>
       </div>
     </header>

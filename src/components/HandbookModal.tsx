@@ -7,6 +7,8 @@ import {
   REAGENT_LIST,
   getDisplayColor,
   getReagentTraits,
+  isChemicalAllergyTrigger,
+  isNoAllergyReagent,
 } from '../engine/reagents';
 import type { ReagentDef } from '../engine/types';
 
@@ -16,6 +18,8 @@ interface HandbookModalProps {
   onAddReagent?: (reagent: ReagentDef) => void;
   addedCounts?: Record<string, number>;
   initialQuery?: string;
+  patientAllergies?: string[];
+  hasChemicalAllergy?: boolean;
 }
 
 type SortKey = 'default' | 'rate_asc' | 'rate_desc' | 'od_asc' | 'od_desc';
@@ -26,6 +30,8 @@ export function HandbookModal({
   onAddReagent,
   addedCounts = {},
   initialQuery,
+  patientAllergies = [],
+  hasChemicalAllergy = false,
 }: HandbookModalProps) {
   const [search, setSearch] = useState('');
   const [selectedTraits, setSelectedTraits] = useState<string[]>([]);
@@ -33,6 +39,7 @@ export function HandbookModal({
   const [closeOnAdd, setCloseOnAdd] = useState(false);
   const [justAddedName, setJustAddedName] = useState<string | null>(null);
   const wasOpenRef = useRef(false);
+  const patientAllergySet = useMemo(() => new Set(patientAllergies), [patientAllergies]);
 
   useEffect(() => {
     if (open && !wasOpenRef.current && initialQuery !== undefined) {
@@ -339,6 +346,18 @@ export function HandbookModal({
                         </div>
                         <div className="quick-chips" style={{ marginTop: 5 }}>
                           <span className="tag-chip mono">pH {r.ph}</span>
+                          {isNoAllergyReagent(r) && (
+                            <span
+                              className="tag-chip good"
+                              title="位于上游过敏黑名单或非 /medicine 安全路径，不触发极端药物过敏与化学过敏突变"
+                            >
+                              无过敏
+                            </span>
+                          )}
+                          {patientAllergySet.has(r.id) && <span className="tag-chip danger">患者过敏原</span>}
+                          {hasChemicalAllergy && isChemicalAllergyTrigger(r) && (
+                            <span className="tag-chip warn">触发化学过敏</span>
+                          )}
                           {r.ignoreStasis && <span className="tag-chip good">静滞有效</span>}
                           {r.deadProcess && <span className="tag-chip good">死后生效</span>}
                           {r.selfConsuming && <span className="tag-chip">无肝可代</span>}

@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
+import { BLOOD_VOLUME_NORMAL, BLOOD_VOLUME_OKAY } from '../constants';
 import { SIM_PRESETS, makeBasePatient } from '../presets';
-import { EFFECT_TRAITS, REAGENTS, REAGENT_LIST, getReagentTraits } from '../reagents';
+import {
+  EFFECT_TRAITS,
+  EXTREME_ALLERGY_CANDIDATES,
+  REAGENTS,
+  REAGENT_LIST,
+  getReagentTraits,
+  isChemicalAllergyTrigger,
+  isExtremeAllergyCandidate,
+  isNoAllergyReagent,
+  rollRandomAllergies,
+} from '../reagents';
 import {
   cloneRegimenDoses,
   createDefaultDose,
@@ -307,5 +318,167 @@ describe('Tianguan13 Pharmacology Simulator', () => {
     expect(neurineTraits).toContain('死后生效');
     expect(neurineTraits).toContain('无肝可代');
     expect(neurineTraits).toContain('有逆反应');
+  });
+
+  it('classifies upstream allergy blacklist, no-allergy trait, and candidate rolls accurately', () => {
+    const noAllergyIds = [
+      'libital',
+      'lenturi',
+      'probital',
+      'synthflesh',
+      'coagulant',
+      'seraka_extract',
+      'banana_peel',
+      'epinephrine',
+      'diphenhydramine',
+      'synaphydramine',
+      'salglu_solution',
+      'albuterol',
+      'insulin',
+      'regen_jelly',
+      'strange_reagent',
+      'determination',
+      'honey',
+      'peptides',
+    ];
+    for (const id of noAllergyIds) {
+      const def = REAGENTS[id];
+      expect(isNoAllergyReagent(def)).toBe(true);
+      expect(getReagentTraits(def)).toContain('无过敏');
+      expect(isExtremeAllergyCandidate(def)).toBe(false);
+    }
+
+    for (const id of ['granibitaluri', 'sal_acid', 'atropine', 'mannitol', 'mutadone']) {
+      const def = REAGENTS[id];
+      expect(isExtremeAllergyCandidate(def)).toBe(true);
+      expect(isNoAllergyReagent(def)).toBe(false);
+      expect(getReagentTraits(def)).not.toContain('无过敏');
+    }
+
+    for (const id of ['toxin', 'amatoxin', 'histamine', 'libitoil']) {
+      const def = REAGENTS[id];
+      expect(isNoAllergyReagent(def)).toBe(false);
+      expect(isExtremeAllergyCandidate(def)).toBe(false);
+    }
+
+    expect(isChemicalAllergyTrigger(REAGENTS.mannitol)).toBe(false);
+    expect(isChemicalAllergyTrigger(REAGENTS.mutadone)).toBe(false);
+    expect(isChemicalAllergyTrigger(REAGENTS.sal_acid)).toBe(true);
+    expect(isChemicalAllergyTrigger(REAGENTS.granibitaluri)).toBe(true);
+
+    const rolled = rollRandomAllergies(6);
+    expect(rolled.length).toBe(6);
+    expect(new Set(rolled).size).toBe(6);
+    expect(EXTREME_ALLERGY_CANDIDATES.length).toBe(38);
+    for (const id of rolled) {
+      expect(isExtremeAllergyCandidate(REAGENTS[id])).toBe(true);
+    }
+  });
+
+  it('simulates Extreme Medicine Allergy toxicity, histamine OD, stomach vomit purge, and organ damage', () => {
+    const res = runSimulation(
+      makeBasePatient({ allergies: ['sal_acid'] }),
+      [
+        dose('sal_acid', 10, { purity: 1.0 }),
+        dose('water', 10, { method: 'INGEST', purity: 1.0 }),
+        dose('nutriment', 10, { method: 'INGEST', purity: 0.5 }),
+      ],
+      { durationSeconds: 12, rngMode: 'expected', seed: 7 },
+    );
+
+    const s1 = res.snapshots[1];
+    // +6 tox - 3 * 0.19 (vomit relief) = 5.43
+    expect(s1.tox).toBeCloseTo(5.43, 2);
+    expect(s1.activeAllergens).toContain('水杨酸');
+    expect(s1.bloodReagents.find((r) => r.id === 'sal_acid')?.allergyState).toBe('active');
+    expect(s1.bloodReagents.find((r) => r.id === 'histamine')?.volume).toBeCloseTo(6.0, 2);
+
+    // 6-organ pool: 10 * 0.19 / 6 = 0.3167 raw; passive healing removes 0.1 (100HP organs) or 0.2 (200HP brain)
+    expect(s1.organs.lungs.damage).toBeCloseTo((10 * 0.19) / 6 - 0.1, 2);
+    expect(s1.organs.eyes.damage).toBeCloseTo(0, 4);
+    expect(s1.organs.ears.damage).toBeCloseTo(0, 4);
+
+    // Both digest 1.5u -> 8.5u before vomit; non-food water purges 19% (-> 6.885u), food nutriment only loses 1.9% (-> 8.339u)
+    const waterLeft = s1.stomachReagents.find((r) => r.id === 'water')?.volume ?? 0;
+    const nutrimentLeft = s1.stomachReagents.find((r) => r.id === 'nutriment')?.volume ?? 0;
+    expect(waterLeft).toBeCloseTo(6.885, 2);
+    expect(nutrimentLeft).toBeCloseTo(8.339, 2);
+
+    // By 12s (6 ticks), injected histamine exceeds 30u and triggers histamine OD
+    expect(res.summary.triggeredAllergies).toContain('水杨酸');
+    expect(res.summary.triggeredODs).toContain('组胺');
+  });
+
+  it('blocks Extreme Medicine Allergy with Epinephrine, pauses consumption, and resumes after depletion', () => {
+    // Epinephrine metabolizes at 0.1u/tick, so 0.4u lasts Ticks 1..4 and depletes before Tick 5
+    const res = runSimulation(
+      makeBasePatient({ brute: 50, allergies: ['sal_acid'] }),
+      [
+        dose('sal_acid', 10, { purity: 1.0 }),
+        dose('epinephrine', 0.4, { purity: 1.0 }),
+      ],
+      { durationSeconds: 12, rngMode: 'expected', seed: 11 },
+    );
+
+    const s1 = res.snapshots[1];
+    expect(s1.blockedAllergens).toContain('水杨酸');
+    expect(s1.activeAllergens).toEqual([]);
+    expect(s1.tox).toBeCloseTo(0, 3);
+    expect(s1.bloodReagents.some((r) => r.id === 'histamine')).toBe(false);
+    // Allergen metabolism is paused while Epinephrine is present, yet on_mob_life still heals brute
+    expect(s1.bloodReagents.find((r) => r.id === 'sal_acid')?.volume).toBeCloseTo(10.0, 2);
+    expect(s1.bloodReagents.find((r) => r.id === 'sal_acid')?.allergyState).toBe('blocked');
+    expect(s1.brute).toBeLessThan(50);
+
+    const s4 = res.snapshots[4];
+    expect(s4.tox).toBeCloseTo(0, 3);
+    expect(s4.bloodReagents.find((r) => r.id === 'sal_acid')?.volume).toBeCloseTo(10.0, 2);
+
+    // Tick 5 (t=10s): Epinephrine gone -> allergy bursts & consumption resumes
+    const s5 = res.snapshots[5];
+    expect(s5.activeAllergens).toContain('水杨酸');
+    expect(s5.blockedAllergens).toEqual([]);
+    expect(s5.tox).toBeGreaterThan(5);
+    expect(s5.bloodReagents.find((r) => r.id === 'histamine')?.volume).toBeCloseTo(6.0, 2);
+    expect(s5.bloodReagents.find((r) => r.id === 'sal_acid')?.volume).toBeCloseTo(9.8, 2);
+  });
+
+  it('runs Extreme Medicine Allergy cleanly in seeded random mode', () => {
+    const res = runSimulation(
+      makeBasePatient({ brute: 30, allergies: ['sal_acid'] }),
+      [dose('sal_acid', 15, { purity: 1.0 }), dose('water', 15, { method: 'INGEST', purity: 1.0 })],
+      { durationSeconds: 60, rngMode: 'random', seed: 123 },
+    );
+    expect(res.summary.triggeredAllergies).toContain('水杨酸');
+    expect(res.events.some((e) => e.category === 'allergy')).toBe(true);
+    for (const s of res.snapshots) {
+      expect(Number.isFinite(s.health)).toBe(true);
+      expect(Number.isFinite(s.tox)).toBe(true);
+    }
+  });
+
+  it('triggers Chemical Allergy mutation even with Epinephrine, while exempting blacklist and mannitol/mutadone', () => {
+    const triggered = runSimulation(
+      makeBasePatient({ chemicalAllergy: true }),
+      [dose('sal_acid', 15, { purity: 1.0 }), dose('epinephrine', 10, { purity: 1.0 })],
+      { durationSeconds: 20, rngMode: 'expected', seed: 5 },
+    );
+    const lastTrig = triggered.snapshots[triggered.snapshots.length - 1];
+    expect(triggered.summary.triggeredAllergies).toContain('化学过敏突变');
+    expect(lastTrig.tox).toBeGreaterThan(0);
+    expect(lastTrig.bloodVolume).toBeLessThan(BLOOD_VOLUME_NORMAL);
+    expect(lastTrig.bloodVolume).toBeGreaterThanOrEqual(BLOOD_VOLUME_OKAY);
+
+    const exempt = runSimulation(
+      makeBasePatient({ chemicalAllergy: true, brute: 20 }),
+      [
+        dose('libital', 10, { purity: 0.75 }),
+        dose('mannitol', 10, { purity: 1.0 }),
+        dose('mutadone', 10, { purity: 1.0 }),
+      ],
+      { durationSeconds: 20, rngMode: 'expected', seed: 5 },
+    );
+    expect(exempt.summary.triggeredAllergies).toEqual([]);
+    expect(exempt.events.some((e) => e.category === 'allergy')).toBe(false);
   });
 });

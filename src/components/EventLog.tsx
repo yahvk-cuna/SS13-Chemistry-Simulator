@@ -8,7 +8,7 @@ interface EventLogProps {
 }
 
 export function EventLog({ events, onJumpToTime }: EventLogProps) {
-  const [filter, setFilter] = useState<'all' | 'danger' | 'warn' | 'reaction' | 'dose'>('all');
+  const [filter, setFilter] = useState<'all' | 'danger' | 'warn' | 'reaction' | 'allergy' | 'dose'>('all');
 
   const filtered = useMemo(() => {
     return events.filter((e) => {
@@ -16,6 +16,7 @@ export function EventLog({ events, onJumpToTime }: EventLogProps) {
       if (filter === 'danger') return e.severity === 'danger';
       if (filter === 'warn') return e.severity === 'warn' || e.severity === 'danger';
       if (filter === 'reaction') return e.category === 'reaction';
+      if (filter === 'allergy') return e.category === 'allergy';
       return e.category === 'dose';
     });
   }, [events, filter]);
@@ -36,6 +37,7 @@ export function EventLog({ events, onJumpToTime }: EventLogProps) {
               ['danger', '致命/过量'],
               ['warn', '警告以上'],
               ['reaction', '转化/反应'],
+              ['allergy', '药物过敏'],
               ['dose', '给药记录'],
             ] as const
           ).map(([id, label]) => (

@@ -173,6 +173,8 @@ export interface PatientConfig {
   inStasis: boolean;
   touchProtection: number;
   husked: boolean;
+  allergies: string[];
+  chemicalAllergy: boolean;
 }
 
 export interface SimOptions {
@@ -221,6 +223,8 @@ export interface SimMutableState {
   inStasis: boolean;
   touchProtection: number;
   husked: boolean;
+  allergies: string[];
+  chemicalAllergy: boolean;
   losebreath: number;
   failedLastBreath: boolean;
   drowsiness: number;
@@ -256,6 +260,7 @@ export interface ReagentSnapshot {
   overdosed: boolean;
   currentCycle: number;
   metabolizing: boolean;
+  allergyState?: 'active' | 'blocked';
 }
 
 export interface TickSnapshot {
@@ -292,13 +297,15 @@ export interface TickSnapshot {
   bloodReagents: ReagentSnapshot[];
   stomachReagents: ReagentSnapshot[];
   activeTransfers: { label: string; reagentId: string; remaining: number }[];
+  activeAllergens: string[];
+  blockedAllergens: string[];
 }
 
 export interface SimEvent {
   time: number;
   tick: number;
   severity: 'info' | 'good' | 'warn' | 'danger';
-  category: 'dose' | 'reaction' | 'overdose' | 'organ' | 'status' | 'vital';
+  category: 'dose' | 'reaction' | 'overdose' | 'organ' | 'status' | 'vital' | 'allergy';
   title: string;
   detail: string;
 }
@@ -321,6 +328,7 @@ export interface SimSummary {
   triggeredInverses: string[];
   triggeredReactions: string[];
   triggeredDangerReactions: string[];
+  triggeredAllergies: string[];
   triggeredHeartAttack: boolean;
   triggeredStamcrit: boolean;
   triggeredSleep: boolean;

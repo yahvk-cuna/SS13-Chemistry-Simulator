@@ -13,7 +13,7 @@ import { runSimulation } from './engine/simulator';
 import type { DoseEvent, PatientConfig, ReagentDef, RngMode, SimResult } from './engine/types';
 
 function clonePatient(p: PatientConfig): PatientConfig {
-  return { ...p, organs: { ...p.organs } };
+  return { ...p, organs: { ...p.organs }, allergies: [...(p.allergies ?? [])] };
 }
 
 function cloneDoses(doses: DoseEvent[]): DoseEvent[] {
@@ -137,6 +137,8 @@ export function App() {
           <RegimenPanel
             doses={doses}
             onChange={handleDosesChange}
+            patientAllergies={patient.allergies}
+            hasChemicalAllergy={patient.chemicalAllergy}
             onOpenReagentLibrary={() => {
               setHandbookQuery('');
               setHandbookOpen(true);
@@ -195,6 +197,8 @@ export function App() {
         initialQuery={handbookQuery}
         onAddReagent={handleAddReagent}
         addedCounts={doseCountsByReagent}
+        patientAllergies={patient.allergies}
+        hasChemicalAllergy={patient.chemicalAllergy}
       />
     </div>
   );

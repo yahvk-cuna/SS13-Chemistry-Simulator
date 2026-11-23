@@ -3403,8 +3403,90 @@ export function computeEffectiveOD(def: ReagentDef, purity: number): number {
   return Math.max(0, def.overdoseThreshold + (purity - def.defaultPurity) * def.overdoseThreshold);
 }
 
+/**
+ * Upstream `GLOB.allergy_reagent_blacklist` (code/datums/quirks/negative_quirks/allergic.dm).
+ * Includes `/medicine/c2/*` (except `granibitaluri`, which lives at `/medicine/granibitaluri`),
+ * `/medicine/coagulant/*`, and explicit emergency/special medicines.
+ */
+export const ALLERGY_BLACKLIST_IDS: ReadonlySet<string> = new Set([
+  // /datum/reagent/medicine/c2/*
+  'libital',
+  'helbital',
+  'probital',
+  'aiuri',
+  'lenturi',
+  'hercuri',
+  'synthflesh',
+  'multiver',
+  'seiver',
+  'syriniver',
+  'musiver',
+  'tirimol',
+  'convermol',
+  'penthrite',
+  // /datum/reagent/medicine/coagulant/*
+  'coagulant',
+  'banana_peel',
+  'seraka_extract',
+  // Explicit emergency & special medicine entries
+  'adminordrazine',
+  'albuterol',
+  'changelingadrenaline',
+  'changelinghaste',
+  'cordiolis_hepatico',
+  'diphenhydramine',
+  'epinephrine',
+  'insulin',
+  'muscle_stimulant',
+  'godblood',
+  'protozine',
+  'regen_jelly',
+  'salglu_solution',
+  'sansufentanyl',
+  'strange_reagent',
+  'synaphydramine',
+  'syndicate_nanites',
+]);
+
+/** Non-`/medicine` therapeutic reagents exempt from both medicine allergies. */
+const NON_MED_THERAPEUTIC_IDS: ReadonlySet<string> = new Set(['determination', 'honey', 'peptides']);
+
+/** Food reagents treated specially when purging non-food chemicals during vomit. */
+export const STOMACH_FOOD_IDS: ReadonlySet<string> = new Set(['nutriment', 'peptides', 'sugar', 'honey']);
+
+export function isExtremeAllergyCandidate(def: ReagentDef): boolean {
+  return def.isMedicine && !ALLERGY_BLACKLIST_IDS.has(def.id);
+}
+
+export function isChemicalAllergyTrigger(def: ReagentDef): boolean {
+  return (
+    def.isMedicine &&
+    !ALLERGY_BLACKLIST_IDS.has(def.id) &&
+    def.id !== 'mannitol' &&
+    def.id !== 'mutadone'
+  );
+}
+
+export function isNoAllergyReagent(def: ReagentDef): boolean {
+  return def.isMedicine ? ALLERGY_BLACKLIST_IDS.has(def.id) : NON_MED_THERAPEUTIC_IDS.has(def.id);
+}
+
+export const EXTREME_ALLERGY_CANDIDATES: ReagentDef[] = ALL_REAGENTS.filter(isExtremeAllergyCandidate);
+
+export function rollRandomAllergies(count = 6, rng: () => number = Math.random): string[] {
+  const pool = EXTREME_ALLERGY_CANDIDATES.map((r) => r.id);
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const tmp = pool[i];
+    pool[i] = pool[j];
+    pool[j] = tmp;
+  }
+  return pool.slice(0, Math.min(count, pool.length));
+}
+
 export const MECHANISM_TRAITS = [
   '治疗药物',
+  '无过敏',
   '无过量(无OD)',
   '有过量(OD)',
   '有逆反应',
@@ -3450,6 +3532,7 @@ export const EFFECT_TRAITS = [
 export function getReagentTraits(def: ReagentDef): string[] {
   const traits = new Set<string>(def.targets);
   if (def.isMedicine) traits.add('治疗药物');
+  if (isNoAllergyReagent(def)) traits.add('无过敏');
   if (def.overdoseThreshold === 0) traits.add('无过量(无OD)');
   else traits.add('有过量(OD)');
   if (def.inverseChemVal > 0) traits.add('有逆反应');

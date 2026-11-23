@@ -175,6 +175,8 @@ export function TickInspector({ snapshot }: TickInspectorProps) {
 
         {/* Traits & Debuffs */}
         {(snapshot.traits.length > 0 ||
+          snapshot.activeAllergens.length > 0 ||
+          snapshot.blockedAllergens.length > 0 ||
           snapshot.heartAttack ||
           snapshot.stamcrit ||
           snapshot.sleeping > 0 ||
@@ -183,6 +185,12 @@ export function TickInspector({ snapshot }: TickInspectorProps) {
           snapshot.jitter > 0 ||
           snapshot.disgust > 5) && (
           <div className="quick-chips">
+            {snapshot.activeAllergens.length > 0 && (
+              <span className="tag-chip danger">过敏发作: {snapshot.activeAllergens.join(' / ')}</span>
+            )}
+            {snapshot.blockedAllergens.length > 0 && (
+              <span className="tag-chip warn">肾上腺素阻断: {snapshot.blockedAllergens.join(' / ')}</span>
+            )}
             {snapshot.heartAttack && <span className="tag-chip danger">心脏骤停!</span>}
             {snapshot.stamcrit && <span className="tag-chip warn">耐力倒地!</span>}
             {snapshot.sleeping > 0 && <span className="tag-chip warn mono">睡眠 {snapshot.sleeping.toFixed(0)}s</span>}
@@ -233,6 +241,18 @@ export function TickInspector({ snapshot }: TickInspectorProps) {
                       ) : r.overdoseThreshold > 0 ? (
                         <span style={{ color: 'var(--text-muted)' }}>/{r.overdoseThreshold.toFixed(0)}u</span>
                       ) : null}
+                      {r.allergyState === 'active' && (
+                        <>
+                          {' '}
+                          <span className="allergy-badge">过敏!</span>
+                        </>
+                      )}
+                      {r.allergyState === 'blocked' && (
+                        <>
+                          {' '}
+                          <span className="block-badge">阻断</span>
+                        </>
+                      )}
                     </td>
                   </tr>
                 ))}

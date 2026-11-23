@@ -1,6 +1,14 @@
-import { ChevronDown, ChevronRight, HeartPulse } from 'lucide-react';
-import { useState } from 'react';
+import { ChevronDown, ChevronRight, Dices, HeartPulse, ShieldAlert, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { BLOOD_VOLUME_NORMAL, BODYTEMP_NORMAL, LIVER_PRESETS, MAX_HEALTH } from '../engine/constants';
+import {
+  EXTREME_ALLERGY_CANDIDATES,
+  REAGENTS,
+  REAGENT_LIST,
+  getDisplayColor,
+  isExtremeAllergyCandidate,
+  rollRandomAllergies,
+} from '../engine/reagents';
 import type { EnvironmentPreset, LiverTypeId, OrganSlot, PatientConfig, WoundSeverity } from '../engine/types';
 
 interface PatientPanelProps {
@@ -44,6 +52,32 @@ export function PatientPanel({ patient, onChange }: PatientPanelProps) {
   const [openOrgans, setOpenOrgans] = useState(false);
   const [openBlood, setOpenBlood] = useState(false);
   const [openEnv, setOpenEnv] = useState(false);
+  const [openAllergy, setOpenAllergy] = useState(false);
+  const [allergyQuery, setAllergyQuery] = useState('');
+  const [allergyPoolOnly, setAllergyPoolOnly] = useState(true);
+
+  const allergyPoolList = useMemo(() => {
+    const base = allergyPoolOnly ? EXTREME_ALLERGY_CANDIDATES : REAGENT_LIST;
+    const q = allergyQuery.trim().toLowerCase();
+    if (!q) return base;
+    return base.filter(
+      (r) =>
+        r.zhName.toLowerCase().includes(q) ||
+        r.enName.toLowerCase().includes(q) ||
+        (r.aliases ?? []).some((a) => a.toLowerCase().includes(q)),
+    );
+  }, [allergyPoolOnly, allergyQuery]);
+
+  const toggleAllergyId = (reagentId: string) => {
+    const exists = patient.allergies.includes(reagentId);
+    const next = exists ? patient.allergies.filter((id) => id !== reagentId) : [...patient.allergies, reagentId];
+    setField('allergies', next);
+  };
+
+  const allergySummaryParts: string[] = [];
+  if (patient.allergies.length > 0) allergySummaryParts.push(`${patient.allergies.length} 种过敏原`);
+  if (patient.chemicalAllergy) allergySummaryParts.push('化学过敏');
+  const allergySummaryLabel = allergySummaryParts.length > 0 ? allergySummaryParts.join(' · ') : '无';
 
   const initialHP = MAX_HEALTH - patient.brute - patient.burn - patient.tox - patient.oxy;
   const initialStat = computeInitialStat(initialHP, patient.organs.brain, patient.bloodVolume);
@@ -410,6 +444,139 @@ export function PatientPanel({ patient, onChange }: PatientPanelProps) {
                 />
                 焦尸化
               </label>
+            </div>
+          </div>
+        )}
+
+        {/* Medicine & Chemical Allergies */}
+        <button type="button" className="collapse-btn" onClick={() => setOpenAllergy((v) => !v)}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <ShieldAlert size={13} style={{ color: allergySummaryParts.length > 0 ? 'var(--danger)' : 'var(--text-muted)' }} />
+            <span>药物过敏与免疫异常 ({allergySummaryLabel})</span>
+          </span>
+          {openAllergy ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </button>
+        {openAllergy && (
+          <div className="sub-box">
+            <label
+              className={`checkbox-pill ${patient.chemicalAllergy ? 'checked' : ''}`}
+              style={{ justifyContent: 'space-between', width: '100%' }}
+            >
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                <input
+                  type="checkbox"
+                  checked={patient.chemicalAllergy}
+                  onChange={(e) => setField('chemicalAllergy', e.target.checked)}
+                />
+                <span>启用「化学过敏」基因突变 (Chemical Allergy)</span>
+              </span>
+            </label>
+            <div className="dose-sub" style={{ lineHeight: 1.4 }}>
+              代谢存量 ≥1u 的非豁免药物时按概率引起毒素、失血（下限 70%）与呼吸受阻；豁免所有「无过敏」药物及甘露醇、突变酮，<strong>不受肾上腺素阻断</strong>。
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 7, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 5, flexWrap: 'wrap' }}>
+                <span className="control-label">极端药物过敏 ({patient.allergies.length})</span>
+                <div style={{ display: 'flex', gap: 5 }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    title="按上游 GLOB.allergy_reagent_blacklist 规则从合规药物池随机抽取 6 种过敏原"
+                    onClick={() => setField('allergies', rollRandomAllergies(6))}
+                  >
+                    <Dices size={11} />
+                    按上游随机抽 6 种
+                  </button>
+                  {patient.allergies.length > 0 && (
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={() => setField('allergies', [])}
+                    >
+                      清空
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {patient.allergies.length > 0 && (
+                <div className="quick-chips">
+                  {patient.allergies.map((id) => {
+                    const r = REAGENTS[id];
+                    if (!r) return null;
+                    const inPool = isExtremeAllergyCandidate(r);
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        className="tag-chip danger"
+                        style={{ cursor: 'pointer' }}
+                        title="点击移除此过敏原"
+                        onClick={() => toggleAllergyId(id)}
+                      >
+                        <span className="color-dot" style={{ background: getDisplayColor(r.color) }} />
+                        <span>
+                          {r.zhName}
+                          {!inPool ? ' (沙盒)' : ''}
+                        </span>
+                        <X size={10} />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input
+                  type="text"
+                  className="ui-input"
+                  style={{ flex: 1, minWidth: 0, fontSize: 11.5 }}
+                  placeholder="搜索过敏原（中/英文/别名）..."
+                  value={allergyQuery}
+                  onChange={(e) => setAllergyQuery(e.target.value)}
+                />
+                <label className={`checkbox-pill ${allergyPoolOnly ? 'checked' : ''}`} style={{ whiteSpace: 'nowrap' }}>
+                  <input
+                    type="checkbox"
+                    checked={allergyPoolOnly}
+                    onChange={(e) => setAllergyPoolOnly(e.target.checked)}
+                  />
+                  <span>仅合规池 ({EXTREME_ALLERGY_CANDIDATES.length})</span>
+                </label>
+              </div>
+
+              <div className="allergy-picker-list">
+                {allergyPoolList.map((r) => {
+                  const selected = patient.allergies.includes(r.id);
+                  const inPool = isExtremeAllergyCandidate(r);
+                  return (
+                    <button
+                      key={r.id}
+                      type="button"
+                      className={`allergy-picker-row ${selected ? 'selected' : ''}`}
+                      onClick={() => toggleAllergyId(r.id)}
+                    >
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+                        <span className="color-dot" style={{ background: getDisplayColor(r.color) }} />
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {r.zhName}
+                        </span>
+                        <span className="dose-sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {r.enName}
+                        </span>
+                      </span>
+                      <span className="dose-sub mono" style={{ flexShrink: 0, color: selected ? '#fca5a5' : undefined }}>
+                        {selected ? '已选' : inPool ? '上游合规' : '沙盒'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="dose-sub" style={{ lineHeight: 1.4 }}>
+                无肾上腺素时每 tick +6 毒 / +6u 组胺并有 19% 概率呕吐与随机内脏伤；肾上腺素可阻断但暂停过敏原消耗，需苯海拉明清组胺并清血。
+              </div>
             </div>
           </div>
         )}

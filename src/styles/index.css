@@ -522,6 +522,11 @@ input[type='range'] {
   opacity: 0.52;
 }
 
+.dose-card.allergy-hit {
+  border-color: rgba(239, 68, 68, 0.55);
+  background: rgba(239, 68, 68, 0.08);
+}
+
 .dose-head {
   display: flex;
   align-items: center;
@@ -737,6 +742,66 @@ input[type='range'] {
   color: #fff;
   font-size: 10px;
   font-weight: 700;
+}
+
+.allergy-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--danger-dim);
+  border: 1px solid rgba(239, 68, 68, 0.55);
+  color: #fecaca;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.block-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--warn-dim);
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  color: #fde68a;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.allergy-picker-list {
+  max-height: 168px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px;
+  border-radius: 6px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+}
+
+.allergy-picker-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 4px 7px;
+  border-radius: 5px;
+  background: transparent;
+  border: 1px solid transparent;
+  font-size: 11.5px;
+  text-align: left;
+  color: var(--text);
+}
+
+.allergy-picker-row:hover {
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+
+.allergy-picker-row.selected {
+  background: var(--danger-dim);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #fecaca;
 }
 
 /* Event log */

@@ -14,7 +14,13 @@ import {
   X,
 } from 'lucide-react';
 import { type ChangeEvent, useEffect, useMemo, useState } from 'react';
-import { REAGENTS, computeEffectiveOD, getDisplayColor } from '../engine/reagents';
+import {
+  REAGENTS,
+  computeEffectiveOD,
+  getDisplayColor,
+  isChemicalAllergyTrigger,
+  isNoAllergyReagent,
+} from '../engine/reagents';
 import {
   cloneRegimenDoses,
   createDefaultDose,
@@ -29,6 +35,8 @@ import type { DeliveryMethod, DoseEvent, ReagentDef, SavedRegimen } from '../eng
 interface RegimenPanelProps {
   doses: DoseEvent[];
   onChange: (next: DoseEvent[]) => void;
+  patientAllergies: string[];
+  hasChemicalAllergy: boolean;
   onOpenReagentLibrary: () => void;
   onInspectReagent?: (def: ReagentDef) => void;
 }
@@ -53,7 +61,15 @@ const DELIVERY_OPTIONS: { value: DeliveryMethod; label: string; short: string }[
   { value: 'VAPOR', label: '蒸气喷洒 (VAPOR)', short: '蒸气' },
 ];
 
-export function RegimenPanel({ doses, onChange, onOpenReagentLibrary, onInspectReagent }: RegimenPanelProps) {
+export function RegimenPanel({
+  doses,
+  onChange,
+  patientAllergies,
+  hasChemicalAllergy,
+  onOpenReagentLibrary,
+  onInspectReagent,
+}: RegimenPanelProps) {
+  const patientAllergySet = useMemo(() => new Set(patientAllergies), [patientAllergies]);
   const [savedOpen, setSavedOpen] = useState(false);
   const [savedRegimens, setSavedRegimens] = useState<SavedRegimen[]>(() => loadSavedRegimensFromStorage());
   const [schemeName, setSchemeName] = useState('');
@@ -315,8 +331,44 @@ export function RegimenPanel({ doses, onChange, onOpenReagentLibrary, onInspectR
       });
     }
 
+    const extremeHits = Array.from(
+      new Set(
+        active
+          .filter((d) => patientAllergySet.has(d.reagentId))
+          .map((d) => REAGENTS[d.reagentId]?.zhName ?? d.reagentId),
+      ),
+    );
+    if (extremeHits.length > 0) {
+      const hasEpi = ids.has('epinephrine');
+      warnings.push({
+        level: 'danger',
+        text: hasEpi
+          ? `命中患者过敏原（${extremeHits.join(' / ')}）：方案含肾上腺素可阻断毒素与组胺，但过敏原消耗会被暂停，耗尽前需清血。`
+          : `命中患者过敏原（${extremeHits.join(' / ')}）：每 tick 将产 +6 毒与 +6u 组胺并伴呕吐内脏伤！建议改用「无过敏」药物或配肾上腺素+苯海拉明。`,
+      });
+    }
+
+    if (hasChemicalAllergy) {
+      const chemHits = Array.from(
+        new Set(
+          active
+            .filter((d) => {
+              const def = REAGENTS[d.reagentId];
+              return def && isChemicalAllergyTrigger(def);
+            })
+            .map((d) => REAGENTS[d.reagentId]?.zhName ?? d.reagentId),
+        ),
+      );
+      if (chemHits.length > 0) {
+        warnings.push({
+          level: 'danger',
+          text: `命中「化学过敏」突变（${chemHits.join(' / ')}）：存量 ≥1u 时诱发毒素、失血与呼吸抑制，且不受肾上腺素阻断。`,
+        });
+      }
+    }
+
     return warnings;
-  }, [doses]);
+  }, [doses, patientAllergySet, hasChemicalAllergy]);
 
   return (
     <section className="panel">
@@ -641,8 +693,11 @@ export function RegimenPanel({ doses, onChange, onOpenReagentLibrary, onInspectR
           const isCollapsed = Boolean(collapsedIds[dose.id]);
           const methodShort = DELIVERY_OPTIONS.find((m) => m.value === dose.method)?.short ?? dose.method;
           const purityPresets = def.defaultPurity === 0.5 ? [0.5, 0.75, 1] : [0.75, 1];
+          const hitsExtremeAllergy = patientAllergySet.has(dose.reagentId);
+          const hitsChemicalAllergy = hasChemicalAllergy && isChemicalAllergyTrigger(def);
+          const isAllergyHit = dose.enabled && (hitsExtremeAllergy || hitsChemicalAllergy);
           return (
-            <div key={dose.id} className={`dose-card ${dose.enabled ? '' : 'disabled'}`}>
+            <div key={dose.id} className={`dose-card ${dose.enabled ? '' : 'disabled'}${isAllergyHit ? ' allergy-hit' : ''}`}>
               <div className="dose-head">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, flex: 1 }}>
                   <button
@@ -677,6 +732,15 @@ export function RegimenPanel({ doses, onChange, onOpenReagentLibrary, onInspectR
                     <span className="dose-sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {def.enName}
                     </span>
+                    {hitsExtremeAllergy ? (
+                      <span className="allergy-badge" style={{ flexShrink: 0 }}>
+                        过敏原
+                      </span>
+                    ) : hitsChemicalAllergy ? (
+                      <span className="allergy-badge" style={{ flexShrink: 0 }}>
+                        化学过敏
+                      </span>
+                    ) : null}
                   </label>
                 </div>
                 <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
@@ -875,6 +939,11 @@ export function RegimenPanel({ doses, onChange, onOpenReagentLibrary, onInspectR
           </div>
 
           <div className="quick-chips">
+            {isNoAllergyReagent(hoveredInfo.def) && <span className="tag-chip good">无过敏</span>}
+            {patientAllergySet.has(hoveredInfo.def.id) && <span className="tag-chip danger">患者过敏原</span>}
+            {hasChemicalAllergy && isChemicalAllergyTrigger(hoveredInfo.def) && (
+              <span className="tag-chip warn">触发化学过敏</span>
+            )}
             {hoveredInfo.def.targets.map((t) => (
               <span key={t} className="tag-chip">
                 {t}

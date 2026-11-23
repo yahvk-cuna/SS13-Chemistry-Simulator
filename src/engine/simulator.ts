@@ -1,6 +1,7 @@
 import {
   BLOOD_REGEN_FACTOR,
   BLOOD_VOLUME_NORMAL,
+  BLOOD_VOLUME_OKAY,
   BLOOD_VOLUME_SURVIVE,
   BODYTEMP_AREA_SKIN_CHANGE_RATE,
   BODYTEMP_COLD_DAMAGE_LIMIT,
@@ -38,7 +39,7 @@ import {
   roundStep,
 } from './constants';
 import { runInBodyReactions } from './reactions';
-import { REAGENTS } from './reagents';
+import { REAGENTS, STOMACH_FOOD_IDS, isChemicalAllergyTrigger } from './reagents';
 import { createRng, sptProbRate } from './rng';
 import type {
   DoseEvent,
@@ -148,6 +149,8 @@ function createInitialState(patient: PatientConfig): SimMutableState {
     inStasis: patient.inStasis,
     touchProtection: clamp(patient.touchProtection, 0, 1),
     husked: patient.husked,
+    allergies: [...(patient.allergies ?? [])],
+    chemicalAllergy: Boolean(patient.chemicalAllergy),
     losebreath: 0,
     failedLastBreath: false,
     drowsiness: 0,
@@ -228,7 +231,10 @@ function syncTraits(state: SimMutableState): void {
   state.traits = next;
 }
 
-function snapshotReagent(inst: ReagentInstance): ReagentSnapshot {
+function snapshotReagent(
+  inst: ReagentInstance,
+  allergyState?: 'active' | 'blocked',
+): ReagentSnapshot {
   const def = REAGENTS[inst.id];
   return {
     id: inst.id,
@@ -241,10 +247,22 @@ function snapshotReagent(inst: ReagentInstance): ReagentSnapshot {
     overdosed: inst.overdosed,
     currentCycle: inst.currentCycle,
     metabolizing: inst.metabolizing,
+    ...(allergyState ? { allergyState } : {}),
   };
 }
 
-function takeSnapshot(state: SimMutableState, tick: number, time: number): TickSnapshot {
+interface TickAllergyInfo {
+  activeAllergens: string[];
+  blockedAllergens: string[];
+  stateById: Map<string, 'active' | 'blocked'>;
+}
+
+function takeSnapshot(
+  state: SimMutableState,
+  tick: number,
+  time: number,
+  allergyInfo?: TickAllergyInfo,
+): TickSnapshot {
   const organsSnap = {} as TickSnapshot['organs'];
   for (const slot of Object.keys(state.organs) as OrganSlot[]) {
     const org = state.organs[slot];
@@ -286,13 +304,15 @@ function takeSnapshot(state: SimMutableState, tick: number, time: number): TickS
     husked: state.husked,
     organs: organsSnap,
     traits: Array.from(state.traits),
-    bloodReagents: state.blood.map(snapshotReagent),
-    stomachReagents: state.stomach.map(snapshotReagent),
+    bloodReagents: state.blood.map((r) => snapshotReagent(r, allergyInfo?.stateById.get(r.id))),
+    stomachReagents: state.stomach.map((r) => snapshotReagent(r)),
     activeTransfers: state.activeTransfers.map((t) => ({
       label: t.label,
       reagentId: t.reagentId,
       remaining: Number(t.remaining.toFixed(2)),
     })),
+    activeAllergens: allergyInfo?.activeAllergens ?? [],
+    blockedAllergens: allergyInfo?.blockedAllergens ?? [],
   };
 }
 
@@ -311,6 +331,11 @@ export function runSimulation(
   const triggeredInverses = new Set<string>();
   const triggeredReactions = new Set<string>();
   const triggeredDangerReactions = new Set<string>();
+  const triggeredAllergies = new Set<string>();
+  const allergySet = new Set(state.allergies);
+  let prevActiveAllergenIds = new Set<string>();
+  let prevBlockedAllergenIds = new Set<string>();
+  let wasChemicalAllergyActive = false;
   let triggeredHeartAttack = state.heartAttack;
   let triggeredStamcrit = state.stamcrit;
   let triggeredSleep = false;
@@ -580,11 +605,26 @@ export function runSimulation(
   const activeDoses = doses.filter((d) => d.enabled && d.volume > 0 && REAGENTS[d.reagentId]);
   const firedDoseIds = new Set<string>();
 
+  const ALLERGY_ORGAN_POOL: ReadonlyArray<OrganSlot | 'appendix'> = [
+    'brain',
+    'appendix',
+    'lungs',
+    'heart',
+    'liver',
+    'stomach',
+  ];
+
   for (let tick = 1; tick <= totalTicks; tick++) {
     const time = tick * dt;
     ctx.tick = tick;
     ctx.time = time;
     state.staminaHitThisTick = false;
+
+    const tickActiveAllergenIds = new Set<string>();
+    const tickBlockedAllergenIds = new Set<string>();
+    const tickActiveAllergenNames = new Set<string>();
+    const tickBlockedAllergenNames = new Set<string>();
+    const tickAllergyStateById = new Map<string, 'active' | 'blocked'>();
 
     // 1. Scheduled dose delivery (at startTime <= time)
     for (const d of activeDoses) {
@@ -753,6 +793,87 @@ export function runSimulation(
       isLiverless: boolean,
       isDead: boolean,
     ): void {
+      // Extreme Medicine Allergy hook (allergic.dm:76-90, runs at COMSIG_MOB_REAGENT_TICK before liverless check)
+      let stopMetabolism = false;
+      if (allergySet.has(inst.id)) {
+        const hasEpi =
+          (state.blood.find((r) => r.id === 'epinephrine')?.volume ?? 0) >= CHEMICAL_VOLUME_ROUNDING;
+        if (hasEpi) {
+          stopMetabolism = true;
+          tickBlockedAllergenIds.add(inst.id);
+          tickBlockedAllergenNames.add(def.zhName);
+          tickAllergyStateById.set(inst.id, 'blocked');
+          if (!prevBlockedAllergenIds.has(inst.id)) {
+            addEvent(
+              'warn',
+              'allergy',
+              `肾上腺素阻断过敏：${def.zhName}`,
+              `体内存在肾上腺素，已抑制 ${def.zhName} 的过敏毒素与组胺生成，但同时暂停其代谢消耗（在肾上腺素耗尽前需及时清血）。`,
+            );
+          }
+        } else {
+          triggeredAllergies.add(def.zhName);
+          tickActiveAllergenIds.add(inst.id);
+          tickActiveAllergenNames.add(def.zhName);
+          tickAllergyStateById.set(inst.id, 'active');
+          if (!prevActiveAllergenIds.has(inst.id)) {
+            addEvent(
+              'danger',
+              'allergy',
+              `药物过敏爆发：${def.zhName}`,
+              `患者对 ${def.zhName} 极端过敏，每 tick 产生 +${3 * dt} 毒素、+${3 * dt}u 组胺及 ${(sptProbRate(10, dt) * 100).toFixed(0)}% 呕吐/内脏损伤风险！可用肾上腺素阻断并配合苯海拉明清组胺及清血。`,
+            );
+          }
+          state.tox += 3 * dt;
+          ctx.addBloodReagent('histamine', 3 * dt, 1, state.chemTemp, true);
+
+          const pVomit = sptProbRate(10, dt);
+          if (options.rngMode === 'expected') {
+            state.tox = Math.max(0, state.tox - 3 * pVomit);
+            if (state.stomach.length > 0 && pVomit > 0) {
+              for (const bit of state.stomach) {
+                const extraPurge = STOMACH_FOOD_IDS.has(bit.id) ? 0 : Math.min(bit.volume * 0.9, 10);
+                const lost = pVomit * (bit.volume * 0.1 + extraPurge);
+                bit.volume = Math.max(0, bit.volume - lost);
+              }
+              state.stomach = state.stomach.filter((r) => r.volume >= CHEMICAL_VOLUME_ROUNDING);
+            }
+            const expectedOrganLoss = (10 * pVomit) / 6;
+            for (const slot of ['brain', 'lungs', 'heart', 'liver', 'stomach'] as const) {
+              ctx.adjustOrganDamage(slot, expectedOrganLoss);
+            }
+          } else if (rng() < pVomit) {
+            state.tox = Math.max(0, state.tox - 3);
+            if (state.stomach.length > 0) {
+              for (const bit of state.stomach) {
+                bit.volume = Math.max(0, bit.volume * 0.9);
+                if (!STOMACH_FOOD_IDS.has(bit.id)) {
+                  bit.volume = Math.max(0, bit.volume - Math.min(bit.volume, 10));
+                }
+              }
+              state.stomach = state.stomach.filter((r) => r.volume >= CHEMICAL_VOLUME_ROUNDING);
+            }
+            const chosen = ALLERGY_ORGAN_POOL[Math.floor(rng() * ALLERGY_ORGAN_POOL.length)];
+            if (chosen !== 'appendix') {
+              ctx.adjustOrganDamage(chosen, 10);
+              addEvent(
+                'warn',
+                'allergy',
+                `过敏呕吐与内脏损伤（${def.zhName}）`,
+                `触发急性呕吐（毒素 -3，排出胃内残留），并对「${state.organs[chosen].label}」造成 +10 损伤。`,
+              );
+            } else {
+              addEvent(
+                'warn',
+                'allergy',
+                `过敏呕吐（${def.zhName}）`,
+                '触发急性呕吐（毒素 -3，排出胃内残留）；器官损伤随机命中未建模的阑尾（5 项核心内脏未受损）。',
+              );
+            }
+          }
+        }
+      }
+
       if (isLiverless && !def.selfConsuming) {
         if (inst.metabolizing) {
           inst.metabolizing = false;
@@ -798,11 +919,82 @@ export function runSimulation(
         def.onMobDead?.(ctx, inst, ratio, dt);
       }
 
-      if (def.metabolizeReagent) {
-        def.metabolizeReagent(ctx, inst, metabolizedVol, dt);
-      } else {
-        inst.volume = Math.max(0, inst.volume - metabolizedVol);
+      if (!stopMetabolism) {
+        if (def.metabolizeReagent) {
+          def.metabolizeReagent(ctx, inst, metabolizedVol, dt);
+        } else {
+          inst.volume = Math.max(0, inst.volume - metabolizedVol);
+        }
       }
+    }
+
+    // 4b. Chemical Allergy Genetic Mutation (body.dm:861-896)
+    if (state.chemicalAllergy && !state.inStasis && state.stat !== 'DEAD') {
+      const dangerInsts = state.blood.filter((inst) => {
+        if (!inst.metabolizing || inst.volume < 1) return false;
+        const d = REAGENTS[inst.id];
+        return Boolean(d && isChemicalAllergyTrigger(d));
+      });
+      if (dangerInsts.length > 0) {
+        triggeredAllergies.add('化学过敏突变');
+        tickActiveAllergenNames.add('化学过敏突变');
+        for (const inst of dangerInsts) {
+          if (!tickAllergyStateById.has(inst.id)) {
+            tickAllergyStateById.set(inst.id, 'active');
+          }
+        }
+        if (!wasChemicalAllergyActive) {
+          wasChemicalAllergyActive = true;
+          const names = dangerInsts.map((i) => REAGENTS[i.id]?.zhName ?? i.id).join(' / ');
+          addEvent(
+            'danger',
+            'allergy',
+            '化学过敏突变发作',
+            `正在代谢非豁免药物（${names}，存量 ≥1u），引发全身毒素、失血与呼吸抑制！不受肾上腺素阻断，请改用「无过敏」药物或甘露醇/突变酮。`,
+          );
+        }
+        const pGate = sptProbRate(80, dt);
+        if (options.rngMode === 'expected') {
+          const pTox = pGate * sptProbRate(33, dt);
+          if (state.disgust < 100) state.disgust = Math.min(100, state.disgust + 24 * pTox);
+          state.tox += 3 * pTox;
+
+          const pBlood = pGate * sptProbRate(12, dt);
+          if (state.jitter < 36) state.jitter = Math.min(36, state.jitter + 6 * pBlood);
+          if (state.dizzy < 36) state.dizzy = Math.min(36, state.dizzy + 6 * pBlood);
+          if (state.bloodVolume > BLOOD_VOLUME_OKAY) {
+            state.bloodVolume = Math.max(BLOOD_VOLUME_OKAY, state.bloodVolume - 18 * pBlood);
+          }
+
+          const pBreath = pGate * sptProbRate(6, dt);
+          if (state.confusion < 12) state.confusion = Math.min(12, state.confusion + 4 * pBreath);
+          if (state.losebreath < 4) {
+            state.losebreath = Math.min(4, state.losebreath + (4 - state.losebreath) * pBreath);
+          }
+        } else if (rng() < pGate) {
+          if (rng() < sptProbRate(33, dt)) {
+            if (state.disgust < 100) state.disgust = Math.min(100, state.disgust + 24);
+            state.tox += [2, 3, 4][Math.floor(rng() * 3)];
+          }
+          if (rng() < sptProbRate(12, dt)) {
+            if (state.jitter < 36) state.jitter = Math.min(36, state.jitter + 6);
+            if (state.dizzy < 36) state.dizzy = Math.min(36, state.dizzy + 6);
+            if (state.bloodVolume > BLOOD_VOLUME_OKAY) {
+              const bloodLoss = [12, 16, 20, 24][Math.floor(rng() * 4)];
+              state.bloodVolume = Math.max(BLOOD_VOLUME_OKAY, state.bloodVolume - bloodLoss);
+            }
+          }
+          if (rng() < sptProbRate(6, dt)) {
+            if (state.confusion < 12) state.confusion = Math.min(12, state.confusion + 4);
+            state.losebreath = Math.max(state.losebreath, 4);
+          }
+        }
+      } else if (wasChemicalAllergyActive) {
+        wasChemicalAllergyActive = false;
+        addEvent('info', 'allergy', '化学过敏突变缓解', '血液中已无正在代谢的 ≥1u 非豁免药物。');
+      }
+    } else if (wasChemicalAllergyActive) {
+      wasChemicalAllergyActive = false;
     }
 
     // 5. Cryoxadone / Pyroxadone wound healing milestones (33 / 66 / 99)
@@ -1045,7 +1237,16 @@ export function runSimulation(
       fullHealTime = time;
     }
 
-    snapshots.push(takeSnapshot(state, tick, time));
+    prevActiveAllergenIds = tickActiveAllergenIds;
+    prevBlockedAllergenIds = tickBlockedAllergenIds;
+
+    snapshots.push(
+      takeSnapshot(state, tick, time, {
+        activeAllergens: Array.from(tickActiveAllergenNames),
+        blockedAllergens: Array.from(tickBlockedAllergenNames),
+        stateById: tickAllergyStateById,
+      }),
+    );
   }
 
   const first = snapshots[0];
@@ -1110,6 +1311,7 @@ export function runSimulation(
     triggeredInverses: Array.from(triggeredInverses),
     triggeredReactions: Array.from(triggeredReactions),
     triggeredDangerReactions: Array.from(triggeredDangerReactions),
+    triggeredAllergies: Array.from(triggeredAllergies),
     triggeredHeartAttack,
     triggeredStamcrit,
     triggeredSleep,

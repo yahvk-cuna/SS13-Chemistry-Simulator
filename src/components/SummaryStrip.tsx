@@ -19,6 +19,7 @@ export function SummaryStrip({ summary, baselineSummary }: SummaryStripProps) {
     summary.triggeredODs.length +
     summary.triggeredInverses.length +
     summary.triggeredDangerReactions.length +
+    summary.triggeredAllergies.length +
     (summary.worstOrgan.failing ? 1 : 0) +
     (summary.triggeredHeartAttack ? 1 : 0) +
     (summary.triggeredStamcrit ? 1 : 0);
@@ -115,6 +116,7 @@ export function SummaryStrip({ summary, baselineSummary }: SummaryStripProps) {
           {alertTotal > 0 ? `${alertTotal} 项异常` : '安全无警报'}
         </span>
         <span className="kpi-sub">
+          {summary.triggeredAllergies.length > 0 && `过敏:${summary.triggeredAllergies.join('/')} `}
           {summary.triggeredDangerReactions.length > 0 && `${summary.triggeredDangerReactions.join(' / ')} `}
           {summary.triggeredODs.length > 0 && `OD:${summary.triggeredODs.join('/')} `}
           {summary.triggeredInverses.length > 0 && `逆:${summary.triggeredInverses.length} `}
@@ -122,7 +124,7 @@ export function SummaryStrip({ summary, baselineSummary }: SummaryStripProps) {
           {summary.triggeredHeartAttack && '心停 '}
           {summary.triggeredStamcrit && '耐力倒地 '}
           {summary.triggeredSleep && '昏睡'}
-          {alertTotal === 0 && !summary.triggeredSleep && '无过量 / 无逆转 / 无禁忌爆炸'}
+          {alertTotal === 0 && !summary.triggeredSleep && '无过量 / 无逆转 / 无禁忌爆炸 / 无过敏'}
         </span>
       </div>
     </div>

@@ -25,6 +25,8 @@ export function makeBasePatient(overrides: Partial<PatientConfig> = {}): Patient
     touchProtection: 0,
     husked: false,
     ...overrides,
+    allergies: overrides.allergies ? [...overrides.allergies] : [],
+    chemicalAllergy: overrides.chemicalAllergy ?? false,
     organs: {
       liver: 0,
       heart: 0,

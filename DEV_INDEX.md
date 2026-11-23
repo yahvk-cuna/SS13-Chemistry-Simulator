@@ -32,6 +32,9 @@
 | [AGENTS.md](file:///home/yahvk/ss13-chem-sim/AGENTS.md) | Antigravity 工作区常驻规则：强制先读并同步维护 `DEV_INDEX.md`、禁止写入易变数据、汉化优先级与必跑校验 |
 | [DEV_INDEX.md](file:///home/yahvk/ss13-chem-sim/DEV_INDEX.md) | 本项目开发索引、上游 `Tianguan13` 精确路径图谱、公式速查、试剂清单与开发日志 |
 | [package.json](file:///home/yahvk/ss13-chem-sim/package.json) | 依赖版本与 `dev / build / preview / test / typecheck` 脚本 |
+| [flake.nix](file:///home/yahvk/ss13-chem-sim/flake.nix) | Nix Flake 定义（`packages.default` 输出静态构建产物、`devShells.default` 提供 `bun` 与 `bun2nix`、`nixosModules.default` 提供 Nginx 托管模块 `services.ss13-chem-sim`） |
+| [flake.lock](file:///home/yahvk/ss13-chem-sim/flake.lock) | Nix Flake 锁定文件 |
+| [bun.nix](file:///home/yahvk/ss13-chem-sim/bun.nix) | `bun2nix` 生成的离线 npm 依赖声明（配合 `bun.lock` 使用） |
 | [tsconfig.json](file:///home/yahvk/ss13-chem-sim/tsconfig.json) | `ES2022`、`react-jsx`、`strict: true`、`noUnusedLocals: true`、`noUnusedParameters: true` |
 | [vite.config.ts](file:///home/yahvk/ss13-chem-sim/vite.config.ts) | Vite `base: './'` + `@vitejs/plugin-react` + Vitest `include: ['src/**/*.test.ts']` |
 | [index.html](file:///home/yahvk/ss13-chem-sim/index.html) | 中文页面标题与 `#root` 挂载点 |
@@ -235,3 +238,8 @@
 - **合并贴片仿真与菜谱式纯文本配方导出**：在 [constants.ts](file:///home/yahvk/ss13-chem-sim/src/engine/constants.ts)、[types.ts](file:///home/yahvk/ss13-chem-sim/src/engine/types.ts)、[simulator.ts](file:///home/yahvk/ss13-chem-sim/src/engine/simulator.ts)、[scenarioShare.ts](file:///home/yahvk/ss13-chem-sim/src/engine/scenarioShare.ts) 与 [RegimenPanel.tsx](file:///home/yahvk/ss13-chem-sim/src/components/RegimenPanel.tsx) 实现 `patchGroup` 合并贴片（同一贴片 ≤40u、避开彭斯莱特禁忌组合、按比例共享 `0.75u/tick` 释放及一键自动合片/分摊速率显示）；重构 `formatRegimenPlainText` 为直接面向容器配制与施药步骤的菜谱结构，自动合并同时间贴片（≤40u）与口服药丸（≤50u），单步骤省略时间并补全 [pill.dm](file:///home/yahvk/Tianguan13/code/modules/reagents/reagent_containers/pill.dm) 上游缓存至第 3.6 节。
 - **文档与开源协议**：新增 [README.md](file:///home/yahvk/ss13-chem-sim/README.md) 并从 `/usr/share/licenses/spdx/AGPL-3.0-or-later.txt` 复制生成 [LICENSE](file:///home/yahvk/ss13-chem-sim/LICENSE)。
 - **关于（About）弹窗**：新增 [AboutModal.tsx](file:///home/yahvk/ss13-chem-sim/src/components/AboutModal.tsx) 并在 [HeaderBar.tsx](file:///home/yahvk/ss13-chem-sim/src/components/HeaderBar.tsx) / [App.tsx](file:///home/yahvk/ss13-chem-sim/src/App.tsx) 接入「关于」入口，说明功能、上游 Tianguan13 来源并提供 GitHub 源码与 Wiki 链接。
+
+### 2026-11-24 — Nix Flake 部署支持
+- **Nix Flake 打包与开发环境**：新增 [flake.nix](file:///home/yahvk/ss13-chem-sim/flake.nix)、[flake.lock](file:///home/yahvk/ss13-chem-sim/flake.lock) 与 [bun.nix](file:///home/yahvk/ss13-chem-sim/bun.nix)（基于 `bun2nix` PR #110 固定 commit 支持 `lockfileVersion: 2`），提供 `packages.default`（直接输出 `dist/` 静态文件根目录供 Nginx 等托管）、`devShells.default`（包含 `bun` 与 `bun2nix`）与 `nixosModules.default`（声明式配置 `services.ss13-chem-sim` 挂载到 `services.nginx.virtualHosts`，支持根路径与子路径）。
+- **锁文件源对齐**：使用默认源（`registry.npmjs.org`）刷新 [bun.lock](file:///home/yahvk/ss13-chem-sim/bun.lock) 并同步更新 [bun.nix](file:///home/yahvk/ss13-chem-sim/bun.nix)，确保 Nix 沙盒离线缓存命中；在 [.gitignore](file:///home/yahvk/ss13-chem-sim/.gitignore) 忽略 `result` / `result-*`。
+- **验证**：`nix build`、`bun run test`、`bun run typecheck`、`bun run build` 均通过。

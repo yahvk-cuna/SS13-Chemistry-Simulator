@@ -1052,6 +1052,12 @@ input[type='range'] {
   color: #bae6fd;
 }
 
+.patch-group-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .reagent-hover-tooltip {
   position: fixed;
   z-index: 80;

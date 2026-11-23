@@ -12,6 +12,8 @@ export const CHEMICAL_NORMAL_PH = 7.0;
 export const STOMACH_METABOLISM_CONSTANT = 0.25;
 export const STOMACH_DEFAULT_EFFICIENCY = 0.05;
 export const PATCH_TRANSFER_PER_TICK = 0.75; // transfer_per_second = 0.75 passed per Life tick
+export const PATCH_MAX_VOLUME = 40; // /obj/item/reagent_containers/applicator/patch::volume
+export const PILL_MAX_VOLUME = 50; // /obj/item/reagent_containers/applicator/pill::volume
 
 export const MAX_HEALTH = 100;
 export const HEALTH_THRESHOLD_CRIT = 0;

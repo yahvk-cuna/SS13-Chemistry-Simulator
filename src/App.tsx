@@ -1,16 +1,18 @@
+import { X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { EventLog } from './components/EventLog';
 import { HandbookModal } from './components/HandbookModal';
 import { HeaderBar } from './components/HeaderBar';
 import { PatientPanel } from './components/PatientPanel';
 import { RegimenPanel } from './components/RegimenPanel';
+import { ScenarioShareModal } from './components/ScenarioShareModal';
 import { SummaryStrip } from './components/SummaryStrip';
 import { TickInspector } from './components/TickInspector';
 import { TimelineCharts } from './components/TimelineCharts';
-import { SIM_PRESETS } from './engine/presets';
 import { createDefaultDose } from './engine/regimenStorage';
+import { buildScenarioShareUrl, createBlankScenario, tryReadScenarioFromHash } from './engine/scenarioShare';
 import { runSimulation } from './engine/simulator';
-import type { DoseEvent, PatientConfig, ReagentDef, RngMode, SimResult } from './engine/types';
+import type { DoseEvent, PatientConfig, ReagentDef, RngMode, SimResult, SimScenario } from './engine/types';
 
 function clonePatient(p: PatientConfig): PatientConfig {
   return { ...p, organs: { ...p.organs }, allergies: [...(p.allergies ?? [])] };
@@ -20,15 +22,23 @@ function cloneDoses(doses: DoseEvent[]): DoseEvent[] {
   return doses.map((d) => ({ ...d }));
 }
 
-export function App() {
-  const initialPreset = SIM_PRESETS[0];
+function readInitialScenarioState(): { scenario: SimScenario; hashError: string | null } {
+  if (typeof window !== 'undefined') {
+    const { scenario, error } = tryReadScenarioFromHash(window.location.hash);
+    if (scenario) return { scenario, hashError: null };
+    if (error) return { scenario: createBlankScenario(), hashError: error };
+  }
+  return { scenario: createBlankScenario(), hashError: null };
+}
 
-  const [activePresetId, setActivePresetId] = useState<string>(initialPreset.id);
-  const [patient, setPatient] = useState<PatientConfig>(() => clonePatient(initialPreset.patient));
-  const [doses, setDoses] = useState<DoseEvent[]>(() => cloneDoses(initialPreset.doses));
-  const [durationSeconds, setDurationSeconds] = useState<number>(initialPreset.durationSeconds);
-  const [rngMode, setRngMode] = useState<RngMode>('expected');
-  const [seed, setSeed] = useState<number>(42);
+export function App() {
+  const [initialBoot] = useState(readInitialScenarioState);
+
+  const [patient, setPatient] = useState<PatientConfig>(() => clonePatient(initialBoot.scenario.patient));
+  const [doses, setDoses] = useState<DoseEvent[]>(() => cloneDoses(initialBoot.scenario.doses));
+  const [durationSeconds, setDurationSeconds] = useState<number>(initialBoot.scenario.durationSeconds);
+  const [rngMode, setRngMode] = useState<RngMode>(initialBoot.scenario.rngMode);
+  const [seed, setSeed] = useState<number>(initialBoot.scenario.seed);
 
   const [baselineResult, setBaselineResult] = useState<SimResult | null>(null);
   const [selectedTime, setSelectedTime] = useState<number>(0);
@@ -36,6 +46,11 @@ export function App() {
   const [playSpeed, setPlaySpeed] = useState<number>(4);
   const [handbookOpen, setHandbookOpen] = useState<boolean>(false);
   const [handbookQuery, setHandbookQuery] = useState<string>('');
+  const [shareModalOpen, setShareModalOpen] = useState<boolean>(false);
+  const [shareModalNotice, setShareModalNotice] = useState<string | null>(null);
+  const [bannerNotice, setBannerNotice] = useState<{ type: 'good' | 'warn'; text: string } | null>(() =>
+    initialBoot.hashError ? { type: 'warn', text: initialBoot.hashError } : null,
+  );
 
   const doseCountsByReagent = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -45,10 +60,46 @@ export function App() {
     return counts;
   }, [doses]);
 
+  const currentScenario = useMemo<SimScenario>(
+    () => ({ patient, doses, durationSeconds, rngMode, seed }),
+    [patient, doses, durationSeconds, rngMode, seed],
+  );
+
+  const currentShareUrl = useMemo(() => buildScenarioShareUrl(currentScenario), [currentScenario]);
+
   const result = useMemo(
     () => runSimulation(patient, doses, { durationSeconds, rngMode, seed }),
     [patient, doses, durationSeconds, rngMode, seed],
   );
+
+  // Sync state when browser URL hash changes externally
+  useEffect(() => {
+    const onHashChange = () => {
+      const { scenario, error } = tryReadScenarioFromHash(window.location.hash);
+      if (scenario) {
+        setPatient(clonePatient(scenario.patient));
+        setDoses(cloneDoses(scenario.doses));
+        setDurationSeconds(scenario.durationSeconds);
+        setRngMode(scenario.rngMode);
+        setSeed(scenario.seed);
+        setSelectedTime(0);
+        setIsPlaying(false);
+        setBaselineResult(null);
+        setBannerNotice({ type: 'good', text: '已从 URL 链接自动还原场景。' });
+      } else if (error) {
+        setBannerNotice({ type: 'warn', text: error });
+      }
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
+  // Auto-dismiss transient good notices
+  useEffect(() => {
+    if (!bannerNotice || bannerNotice.type !== 'good') return;
+    const timer = window.setTimeout(() => setBannerNotice(null), 3500);
+    return () => window.clearTimeout(timer);
+  }, [bannerNotice]);
 
   // Clamp selectedTime when duration shrinks
   useEffect(() => {
@@ -73,33 +124,65 @@ export function App() {
     return () => window.clearInterval(timer);
   }, [isPlaying, playSpeed, durationSeconds]);
 
-  const handleSelectPreset = (id: string) => {
-    const preset = SIM_PRESETS.find((p) => p.id === id);
-    if (!preset) return;
-    setActivePresetId(preset.id);
-    setPatient(clonePatient(preset.patient));
-    setDoses(cloneDoses(preset.doses));
-    setDurationSeconds(preset.durationSeconds);
+  const applyScenario = (scenario: SimScenario) => {
+    setPatient(clonePatient(scenario.patient));
+    setDoses(cloneDoses(scenario.doses));
+    setDurationSeconds(scenario.durationSeconds);
+    setRngMode(scenario.rngMode);
+    setSeed(scenario.seed);
     setSelectedTime(0);
     setIsPlaying(false);
+    setBaselineResult(null);
+  };
+
+  const handleShareUrl = async () => {
+    const shareUrl = buildScenarioShareUrl(currentScenario);
+    if (typeof window !== 'undefined' && window.history?.replaceState) {
+      window.history.replaceState(null, '', shareUrl);
+    }
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+        setBannerNotice({ type: 'good', text: `已同步地址栏并复制分享链接（${shareUrl.length} 字符）` });
+        return;
+      }
+    } catch {
+      // Fallback to share modal below
+    }
+    setShareModalNotice('未能直接访问剪贴板，可在下方文本框手动复制场景 URL。');
+    setShareModalOpen(true);
+  };
+
+  const handleImportScenario = (scenario: SimScenario) => {
+    applyScenario(scenario);
+    const shareUrl = buildScenarioShareUrl(scenario);
+    if (typeof window !== 'undefined' && window.history?.replaceState) {
+      window.history.replaceState(null, '', shareUrl);
+    }
+    setBannerNotice({ type: 'good', text: `已从链接导入场景（${scenario.doses.length} 项给药，${scenario.durationSeconds}s）` });
+  };
+
+  const handleResetScenario = () => {
+    const blank = createBlankScenario();
+    applyScenario(blank);
+    if (typeof window !== 'undefined' && window.history?.replaceState) {
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+    }
+    setBannerNotice({ type: 'good', text: '已重置为空白场景。' });
   };
 
   const handlePatientChange = (next: PatientConfig) => {
-    setActivePresetId('custom');
     setPatient(next);
   };
 
   const handleDosesChange = (next: DoseEvent[]) => {
-    setActivePresetId('custom');
     setDoses(next);
   };
 
   const handleAddReagent = (def: ReagentDef) => {
-    setActivePresetId('custom');
     setDoses((prev) => [...prev, createDefaultDose(def)]);
   };
 
-  const activePreset = SIM_PRESETS.find((p) => p.id === activePresetId);
   const currentSnap =
     result.snapshots[Math.min(result.snapshots.length - 1, Math.max(0, Math.round(selectedTime / 2)))] ??
     result.snapshots[0];
@@ -107,9 +190,6 @@ export function App() {
   return (
     <div className="app-shell">
       <HeaderBar
-        presets={SIM_PRESETS}
-        activePresetId={activePresetId}
-        onSelectPreset={handleSelectPreset}
         durationSeconds={durationSeconds}
         onDurationChange={setDurationSeconds}
         rngMode={rngMode}
@@ -118,6 +198,12 @@ export function App() {
         onSeedChange={setSeed}
         hasBaseline={baselineResult !== null}
         onToggleBaseline={() => setBaselineResult((prev) => (prev ? null : result))}
+        onShareUrl={() => void handleShareUrl()}
+        onOpenImportUrl={() => {
+          setShareModalNotice(null);
+          setShareModalOpen(true);
+        }}
+        onResetScenario={handleResetScenario}
         onOpenHandbook={() => {
           setHandbookQuery('');
           setHandbookOpen(true);
@@ -127,10 +213,19 @@ export function App() {
       <main className="workspace-grid">
         {/* Left Column: Patient & Regimen Controls */}
         <div className="col-stack">
-          {activePreset && (
-            <div className="warning-banner info" style={{ fontSize: 11.5 }}>
-              <strong>{activePreset.name}</strong>
-              <span>{activePreset.description}</span>
+          {bannerNotice && (
+            <div className={`warning-banner ${bannerNotice.type === 'warn' ? 'warn' : 'info'}`} style={{ fontSize: 11.5 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6 }}>
+                <span>{bannerNotice.text}</span>
+                <button
+                  type="button"
+                  style={{ background: 'transparent', border: 'none', padding: 0, display: 'inline-flex', flexShrink: 0 }}
+                  onClick={() => setBannerNotice(null)}
+                  aria-label="关闭通知"
+                >
+                  <X size={13} />
+                </button>
+              </div>
             </div>
           )}
           <PatientPanel patient={patient} onChange={handlePatientChange} />
@@ -199,6 +294,14 @@ export function App() {
         addedCounts={doseCountsByReagent}
         patientAllergies={patient.allergies}
         hasChemicalAllergy={patient.chemicalAllergy}
+      />
+
+      <ScenarioShareModal
+        open={shareModalOpen}
+        onClose={() => setShareModalOpen(false)}
+        shareUrl={currentShareUrl}
+        onImportScenario={handleImportScenario}
+        initialNotice={shareModalNotice}
       />
     </div>
   );

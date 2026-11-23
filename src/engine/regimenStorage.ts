@@ -1,4 +1,4 @@
-import { clamp } from './constants';
+import { PATCH_MAX_VOLUME, PILL_MAX_VOLUME, clamp } from './constants';
 import { REAGENTS } from './reagents';
 import type { DeliveryMethod, DoseEvent, ReagentDef, SavedRegimen } from './types';
 
@@ -68,6 +68,13 @@ export function sanitizeDoseEvent(raw: unknown, idx = 0): DoseEvent | null {
   const tempNum = typeof obj.temp === 'number' && Number.isFinite(obj.temp) ? obj.temp : 300;
   const ivRateNum = typeof obj.ivRate === 'number' && Number.isFinite(obj.ivRate) ? obj.ivRate : 5;
   const enabled = typeof obj.enabled === 'boolean' ? obj.enabled : true;
+  let patchGroup: number | undefined;
+  if (method === 'PATCH' && typeof obj.patchGroup === 'number' && Number.isFinite(obj.patchGroup)) {
+    const rounded = Math.round(obj.patchGroup);
+    if (rounded >= 1 && rounded <= 99) {
+      patchGroup = rounded;
+    }
+  }
 
   return {
     id: makeUniqueDoseId(idx),
@@ -79,6 +86,7 @@ export function sanitizeDoseEvent(raw: unknown, idx = 0): DoseEvent | null {
     temp: Math.round(clamp(tempNum, 5, 1200)),
     ivRate: Number(clamp(ivRateNum, 0.5, 20).toFixed(2)),
     enabled,
+    ...(patchGroup !== undefined ? { patchGroup } : {}),
   };
 }
 
@@ -235,4 +243,385 @@ export function saveRegimensToStorage(list: SavedRegimen[]): void {
   } catch {
     // Ignore storage quota or private-browsing write failures cleanly
   }
+}
+
+export type PlainTextRecipeFormat = 'multiline' | 'compact';
+
+export interface PlainTextRecipeOptions {
+  format: PlainTextRecipeFormat;
+  title?: string;
+  includeDisabled?: boolean;
+}
+
+/**
+ * Upstream in-container explosion pairs that must never be packed into the same patch or pill.
+ */
+export function areReagentsContainerIncompatible(aId: string, bId: string): boolean {
+  return (
+    (aId === 'penthrite' && (bId === 'epinephrine' || bId === 'atropine')) ||
+    (bId === 'penthrite' && (aId === 'epinephrine' || aId === 'atropine'))
+  );
+}
+
+/**
+ * Auto-pack enabled PATCH doses occurring at the same startTime into ≤40u composite patches,
+ * avoiding explosive pairs. Multi-dose bins get sequential patchGroup IDs (1, 2, ...).
+ */
+export function autoPackPatchGroups(doses: DoseEvent[]): DoseEvent[] {
+  const patchIndicesByTime = new Map<number, number[]>();
+  doses.forEach((d, idx) => {
+    if (!d.enabled || d.method !== 'PATCH' || d.volume <= 0 || !REAGENTS[d.reagentId]) return;
+    const t = Math.round(clamp(d.startTime, 0, 600));
+    const list = patchIndicesByTime.get(t) ?? [];
+    list.push(idx);
+    patchIndicesByTime.set(t, list);
+  });
+
+  const sortedTimes = Array.from(patchIndicesByTime.keys()).sort((a, b) => a - b);
+  const groupByDoseIdx = new Map<number, number | undefined>();
+  let nextGroupId = 1;
+
+  for (const t of sortedTimes) {
+    const indices = [...(patchIndicesByTime.get(t) ?? [])].sort((ia, ib) => doses[ib].volume - doses[ia].volume);
+    const bins: { total: number; doseIndices: number[]; reagentIds: string[] }[] = [];
+
+    for (const idx of indices) {
+      const d = doses[idx];
+      let placed = false;
+      for (const bin of bins) {
+        if (
+          bin.total + d.volume <= PATCH_MAX_VOLUME + 1e-6 &&
+          !bin.reagentIds.some((rid) => areReagentsContainerIncompatible(rid, d.reagentId))
+        ) {
+          bin.total += d.volume;
+          bin.doseIndices.push(idx);
+          bin.reagentIds.push(d.reagentId);
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        bins.push({ total: d.volume, doseIndices: [idx], reagentIds: [d.reagentId] });
+      }
+    }
+
+    for (const bin of bins) {
+      if (bin.doseIndices.length >= 2) {
+        const gid = nextGroupId++;
+        for (const idx of bin.doseIndices) {
+          groupByDoseIdx.set(idx, gid);
+        }
+      } else {
+        groupByDoseIdx.set(bin.doseIndices[0], undefined);
+      }
+    }
+  }
+
+  return doses.map((d, idx) => {
+    if (!d.enabled || d.method !== 'PATCH') return { ...d };
+    const patchGroup = groupByDoseIdx.get(idx);
+    if (patchGroup === undefined) {
+      const copy = { ...d };
+      delete copy.patchGroup;
+      return copy;
+    }
+    return { ...d, patchGroup };
+  });
+}
+
+function formatNumberTrim(val: number, decimals = 2): string {
+  return Number(val.toFixed(decimals)).toString();
+}
+
+interface RecipeIngredient {
+  reagentId: string;
+  volume: number;
+  pct: number;
+  temp: number;
+  enabled: boolean;
+}
+
+function mergeIngredients(items: RecipeIngredient[]): RecipeIngredient[] {
+  const merged = new Map<string, RecipeIngredient>();
+  for (const item of items) {
+    const key = `${item.reagentId}|${item.pct}|${item.temp}|${item.enabled ? 1 : 0}`;
+    const prev = merged.get(key);
+    if (prev) {
+      prev.volume = Number((prev.volume + item.volume).toFixed(4));
+    } else {
+      merged.set(key, { ...item });
+    }
+  }
+  return Array.from(merged.values());
+}
+
+function formatIngredientText(ing: RecipeIngredient, style: PlainTextRecipeFormat): string {
+  const def = REAGENTS[ing.reagentId];
+  const zhName = def?.zhName ?? ing.reagentId;
+  const vol = formatNumberTrim(ing.volume);
+  const extras: string[] = [`${ing.pct}%`];
+  if (ing.reagentId === 'seiver' && ing.temp !== 300) {
+    extras.push(`${ing.temp}K`);
+  }
+  if (!ing.enabled) {
+    extras.push('禁用');
+  }
+  return style === 'multiline'
+    ? `${zhName} ${vol}u（${extras.join(', ')}）`
+    : `${zhName} ${vol}u(${extras.join(', ')})`;
+}
+
+function toRecipeIngredient(d: DoseEvent): RecipeIngredient {
+  return {
+    reagentId: d.reagentId,
+    volume: d.volume,
+    pct: Math.round(d.purity * 100),
+    temp: d.reagentId === 'seiver' ? Math.round(d.temp) : 300,
+    enabled: d.enabled,
+  };
+}
+
+function packStepContainers(sourceDoses: DoseEvent[], maxCap: number): RecipeIngredient[][] {
+  const chunks: RecipeIngredient[] = [];
+  for (const d of sourceDoses) {
+    let rem = d.volume;
+    const base = toRecipeIngredient(d);
+    while (rem > 1e-6) {
+      const piece = Math.min(rem, maxCap);
+      chunks.push({ ...base, volume: Number(piece.toFixed(4)) });
+      rem = Number((rem - piece).toFixed(4));
+    }
+  }
+
+  chunks.sort((a, b) => b.volume - a.volume);
+  const bins: { total: number; items: RecipeIngredient[] }[] = [];
+
+  for (const chunk of chunks) {
+    let placed = false;
+    for (const bin of bins) {
+      if (
+        bin.total + chunk.volume <= maxCap + 1e-6 &&
+        !bin.items.some((it) => areReagentsContainerIncompatible(it.reagentId, chunk.reagentId))
+      ) {
+        bin.total += chunk.volume;
+        bin.items.push(chunk);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      bins.push({ total: chunk.volume, items: [chunk] });
+    }
+  }
+
+  return bins.map((b) => mergeIngredients(b.items));
+}
+
+function hasIncompatiblePair(items: RecipeIngredient[]): boolean {
+  for (let i = 0; i < items.length; i++) {
+    for (let j = i + 1; j < items.length; j++) {
+      if (areReagentsContainerIncompatible(items[i].reagentId, items[j].reagentId)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+interface StepEntry {
+  multiline: string;
+  compact: string;
+}
+
+/**
+ * Format doses as a structured medical recipe (multiline checklist or compact single-line summary),
+ * grouping composite/auto-packed patches (≤40u) and oral pills (≤50u), and omitting times on single-step plans.
+ */
+export function formatRegimenPlainText(doses: DoseEvent[], options: PlainTextRecipeOptions): string {
+  const includeDisabled = Boolean(options.includeDisabled);
+  const items = doses.filter((d) => REAGENTS[d.reagentId] && d.volume > 0 && (includeDisabled || d.enabled));
+  if (items.length === 0) return '';
+
+  const cleanTitle = options.title?.trim() ?? '';
+
+  // Effective delivery time (explicit patchGroup shares its earliest dose time, matching simulator.ts)
+  const groupStartMap = new Map<number, number>();
+  for (const d of items) {
+    if (d.method === 'PATCH' && d.patchGroup !== undefined) {
+      const t = Math.round(d.startTime);
+      const prev = groupStartMap.get(d.patchGroup);
+      if (prev === undefined || t < prev) groupStartMap.set(d.patchGroup, t);
+    }
+  }
+
+  const getEffectiveTime = (d: DoseEvent): number =>
+    d.method === 'PATCH' && d.patchGroup !== undefined
+      ? (groupStartMap.get(d.patchGroup) ?? Math.round(d.startTime))
+      : Math.round(d.startTime);
+
+  const distinctTimes = Array.from(new Set(items.map(getEffectiveTime))).sort((a, b) => a - b);
+  const isMultiStep = distinctTimes.length > 1;
+
+  let patchCounter = 0;
+  let pillCounter = 0;
+
+  const stepResults: { time: number; entries: StepEntry[] }[] = [];
+
+  for (const t of distinctTimes) {
+    const stepDoses = items.filter((d) => getEffectiveTime(d) === t);
+    const entries: StepEntry[] = [];
+
+    // 1. Explicit composite patch groups
+    const explicitPatchMap = new Map<number, DoseEvent[]>();
+    for (const d of stepDoses) {
+      if (d.method === 'PATCH' && d.patchGroup !== undefined) {
+        const arr = explicitPatchMap.get(d.patchGroup) ?? [];
+        arr.push(d);
+        explicitPatchMap.set(d.patchGroup, arr);
+      }
+    }
+    const explicitGroupIds = Array.from(explicitPatchMap.keys()).sort((a, b) => a - b);
+    for (const gid of explicitGroupIds) {
+      const groupDoses = explicitPatchMap.get(gid) ?? [];
+      const merged = mergeIngredients(groupDoses.map(toRecipeIngredient));
+      const totalVol = merged.reduce((sum, i) => sum + i.volume, 0);
+      const distinctCount = new Set(merged.map((i) => i.reagentId)).size;
+      const patchNo = Math.max(patchCounter + 1, gid);
+      patchCounter = patchNo;
+      const baseLabel = `${distinctCount >= 2 ? '复合贴片' : '贴片'} #${patchNo}`;
+      const compactLabel = `${distinctCount >= 2 ? '复合贴片' : '贴片'}#${patchNo}`;
+      const capStr = `${formatNumberTrim(totalVol)}/${PATCH_MAX_VOLUME}u`;
+      const overNote = totalVol > PATCH_MAX_VOLUME + 1e-6 ? '，超40u上限' : '';
+      const incompatNote = hasIncompatiblePair(merged) ? '，含禁忌混装' : '';
+      const multiBody = merged.map((m) => formatIngredientText(m, 'multiline')).join(' + ');
+      const compactBody = merged.map((m) => formatIngredientText(m, 'compact')).join(' + ');
+      entries.push({
+        multiline: `${baseLabel}（${capStr}${overNote}${incompatNote}）：${multiBody}`,
+        compact: `[${compactLabel} ${capStr}${overNote}${incompatNote}] ${compactBody}`,
+      });
+    }
+
+    // 2. Ungrouped patches packed at ≤40u
+    const ungroupedPatches = stepDoses.filter((d) => d.method === 'PATCH' && d.patchGroup === undefined);
+    if (ungroupedPatches.length > 0) {
+      const packedPatches = packStepContainers(ungroupedPatches, PATCH_MAX_VOLUME);
+      for (const container of packedPatches) {
+        patchCounter += 1;
+        const totalVol = container.reduce((sum, i) => sum + i.volume, 0);
+        const distinctCount = new Set(container.map((i) => i.reagentId)).size;
+        const baseLabel = `${distinctCount >= 2 ? '复合贴片' : '贴片'} #${patchCounter}`;
+        const compactLabel = `${distinctCount >= 2 ? '复合贴片' : '贴片'}#${patchCounter}`;
+        const capStr = `${formatNumberTrim(totalVol)}/${PATCH_MAX_VOLUME}u`;
+        const multiBody = container.map((m) => formatIngredientText(m, 'multiline')).join(' + ');
+        const compactBody = container.map((m) => formatIngredientText(m, 'compact')).join(' + ');
+        entries.push({
+          multiline: `${baseLabel}（${capStr}）：${multiBody}`,
+          compact: `[${compactLabel} ${capStr}] ${compactBody}`,
+        });
+      }
+    }
+
+    // 3. Oral pills packed at ≤50u
+    const ingestDoses = stepDoses.filter((d) => d.method === 'INGEST');
+    if (ingestDoses.length > 0) {
+      const packedPills = packStepContainers(ingestDoses, PILL_MAX_VOLUME);
+      for (const pill of packedPills) {
+        pillCounter += 1;
+        const totalVol = pill.reduce((sum, i) => sum + i.volume, 0);
+        const distinctCount = new Set(pill.map((i) => i.reagentId)).size;
+        const baseLabel = `${distinctCount >= 2 ? '复合药丸' : '药丸'} #${pillCounter}`;
+        const compactLabel = `${distinctCount >= 2 ? '复合药丸' : '药丸'}#${pillCounter}`;
+        const capStr = `${formatNumberTrim(totalVol)}/${PILL_MAX_VOLUME}u`;
+        const multiBody = pill.map((m) => formatIngredientText(m, 'multiline')).join(' + ');
+        const compactBody = pill.map((m) => formatIngredientText(m, 'compact')).join(' + ');
+        entries.push({
+          multiline: `${baseLabel}（${capStr}）：${multiBody}`,
+          compact: `[${compactLabel} ${capStr}] ${compactBody}`,
+        });
+      }
+    }
+
+    // 4. Direct injection, IV drip (grouped by rate), touch, vapor
+    const injectDoses = stepDoses.filter((d) => d.method === 'INJECT');
+    if (injectDoses.length > 0) {
+      const merged = mergeIngredients(injectDoses.map(toRecipeIngredient));
+      const totalVol = formatNumberTrim(merged.reduce((sum, i) => sum + i.volume, 0));
+      entries.push({
+        multiline: `注射（${totalVol}u）：${merged.map((m) => formatIngredientText(m, 'multiline')).join(' + ')}`,
+        compact: `[注射 ${totalVol}u] ${merged.map((m) => formatIngredientText(m, 'compact')).join(' + ')}`,
+      });
+    }
+
+    const ivDoses = stepDoses.filter((d) => d.method === 'IV_DRIP');
+    if (ivDoses.length > 0) {
+      const ivByRate = new Map<string, DoseEvent[]>();
+      for (const d of ivDoses) {
+        const rateKey = formatNumberTrim(d.ivRate);
+        const arr = ivByRate.get(rateKey) ?? [];
+        arr.push(d);
+        ivByRate.set(rateKey, arr);
+      }
+      for (const [rateStr, rateGroup] of ivByRate.entries()) {
+        const merged = mergeIngredients(rateGroup.map(toRecipeIngredient));
+        const totalVol = formatNumberTrim(merged.reduce((sum, i) => sum + i.volume, 0));
+        entries.push({
+          multiline: `静脉滴注（${totalVol}u · ${rateStr}u/t）：${merged.map((m) => formatIngredientText(m, 'multiline')).join(' + ')}`,
+          compact: `[静滴 ${totalVol}u · ${rateStr}u/t] ${merged.map((m) => formatIngredientText(m, 'compact')).join(' + ')}`,
+        });
+      }
+    }
+
+    const touchDoses = stepDoses.filter((d) => d.method === 'TOUCH');
+    if (touchDoses.length > 0) {
+      const merged = mergeIngredients(touchDoses.map(toRecipeIngredient));
+      const totalVol = formatNumberTrim(merged.reduce((sum, i) => sum + i.volume, 0));
+      entries.push({
+        multiline: `泼洒接触（${totalVol}u）：${merged.map((m) => formatIngredientText(m, 'multiline')).join(' + ')}`,
+        compact: `[接触 ${totalVol}u] ${merged.map((m) => formatIngredientText(m, 'compact')).join(' + ')}`,
+      });
+    }
+
+    const vaporDoses = stepDoses.filter((d) => d.method === 'VAPOR');
+    if (vaporDoses.length > 0) {
+      const merged = mergeIngredients(vaporDoses.map(toRecipeIngredient));
+      const totalVol = formatNumberTrim(merged.reduce((sum, i) => sum + i.volume, 0));
+      entries.push({
+        multiline: `蒸气喷洒（${totalVol}u）：${merged.map((m) => formatIngredientText(m, 'multiline')).join(' + ')}`,
+        compact: `[蒸气 ${totalVol}u] ${merged.map((m) => formatIngredientText(m, 'compact')).join(' + ')}`,
+      });
+    }
+
+    stepResults.push({ time: t, entries });
+  }
+
+  if (options.format === 'compact') {
+    const compactText = isMultiStep
+      ? stepResults
+          .map((step) => `[t=${step.time}s] ${step.entries.map((e) => e.compact).join(' | ')}`)
+          .join(' → ')
+      : stepResults
+          .flatMap((step) => step.entries.map((e) => e.compact))
+          .join(' | ');
+    return cleanTitle ? `${cleanTitle}: ${compactText}` : compactText;
+  }
+
+  const lines: string[] = [`【${cleanTitle || '给药配方'}】`];
+
+  if (!isMultiStep) {
+    lines.push('成品配制：');
+    const allEntries = stepResults.flatMap((s) => s.entries);
+    allEntries.forEach((entry, idx) => {
+      lines.push(`  ${idx + 1}. ${entry.multiline}`);
+    });
+  } else {
+    lines.push('配制与施药步骤：');
+    stepResults.forEach((step, idx) => {
+      lines.push(`  第 ${idx + 1} 步 [t=${step.time}s]`);
+      for (const entry of step.entries) {
+        lines.push(`    - ${entry.multiline}`);
+      }
+    });
+  }
+
+  return lines.join('\n');
 }

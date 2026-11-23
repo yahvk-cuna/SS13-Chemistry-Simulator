@@ -42,6 +42,7 @@ import { runInBodyReactions } from './reactions';
 import { REAGENTS, STOMACH_FOOD_IDS, isChemicalAllergyTrigger } from './reagents';
 import { createRng, sptProbRate } from './rng';
 import type {
+  ActiveTransferComponent,
   DoseEvent,
   MobStat,
   OrganSlot,
@@ -604,6 +605,19 @@ export function runSimulation(
 
   const activeDoses = doses.filter((d) => d.enabled && d.volume > 0 && REAGENTS[d.reagentId]);
   const firedDoseIds = new Set<string>();
+  const groupedPatches = new Map<number, DoseEvent[]>();
+  const standaloneDoses: DoseEvent[] = [];
+  for (const d of activeDoses) {
+    if (d.method === 'PATCH' && d.patchGroup !== undefined) {
+      const list = groupedPatches.get(d.patchGroup) ?? [];
+      list.push(d);
+      groupedPatches.set(d.patchGroup, list);
+    } else {
+      standaloneDoses.push(d);
+    }
+  }
+  const sortedPatchGroupIds = Array.from(groupedPatches.keys()).sort((a, b) => a - b);
+  const firedPatchGroups = new Set<number>();
 
   const ALLERGY_ORGAN_POOL: ReadonlyArray<OrganSlot | 'appendix'> = [
     'brain',
@@ -627,7 +641,61 @@ export function runSimulation(
     const tickAllergyStateById = new Map<string, 'active' | 'blocked'>();
 
     // 1. Scheduled dose delivery (at startTime <= time)
-    for (const d of activeDoses) {
+    for (const groupId of sortedPatchGroupIds) {
+      if (firedPatchGroups.has(groupId)) continue;
+      const groupDoses = groupedPatches.get(groupId)!;
+      const groupStartTime = Math.min(...groupDoses.map((d) => d.startTime));
+      if (groupStartTime > time) continue;
+      firedPatchGroups.add(groupId);
+
+      const compMap = new Map<string, ActiveTransferComponent>();
+      for (const d of groupDoses) {
+        const existing = compMap.get(d.reagentId);
+        if (existing) {
+          const total = existing.remaining + d.volume;
+          existing.purity = (existing.purity * existing.remaining + d.purity * d.volume) / total;
+          existing.temp = (existing.temp * existing.remaining + d.temp * d.volume) / total;
+          existing.remaining = total;
+        } else {
+          compMap.set(d.reagentId, {
+            reagentId: d.reagentId,
+            remaining: d.volume,
+            purity: d.purity,
+            temp: d.temp,
+          });
+        }
+      }
+      const components = Array.from(compMap.values());
+      const totalVol = components.reduce((sum, c) => sum + c.remaining, 0);
+      const compNames = components.map((c) => REAGENTS[c.reagentId]?.zhName ?? c.reagentId);
+      const label =
+        components.length > 1
+          ? `复合贴片 #${groupId} (${compNames.join('+')})`
+          : `${compNames[0]} 贴片 #${groupId}`;
+      state.activeTransfers.push({
+        id: `patch-group-${groupId}`,
+        label,
+        reagentId: components[0].reagentId,
+        remaining: totalVol,
+        ratePerTick: PATCH_TRANSFER_PER_TICK,
+        purity: components[0].purity,
+        temp: components[0].temp,
+        method: 'PATCH',
+        components,
+      });
+      const detailParts = components.map(
+        (c) =>
+          `${REAGENTS[c.reagentId]?.zhName ?? c.reagentId} ${Number(c.remaining.toFixed(2))}u (${Math.round(c.purity * 100)}%)`,
+      );
+      addEvent(
+        'info',
+        'dose',
+        `贴附${components.length > 1 ? '复合' : '缓释'}贴片 #${groupId}：${compNames.join(' + ')}`,
+        `总量 ${Number(totalVol.toFixed(2))}u（${detailParts.join('，')}），按比例共享总计 0.75u/tick。`,
+      );
+    }
+
+    for (const d of standaloneDoses) {
       if (firedDoseIds.has(d.id) || d.startTime > time) continue;
       firedDoseIds.add(d.id);
       const def = REAGENTS[d.reagentId];
@@ -676,13 +744,31 @@ export function runSimulation(
     for (let i = state.activeTransfers.length - 1; i >= 0; i--) {
       const tr = state.activeTransfers[i];
       if (tr.method === 'PATCH' && state.inStasis) continue;
-      const stepAmt = Math.min(tr.remaining, tr.ratePerTick);
-      if (stepAmt > 0) {
-        tr.remaining -= stepAmt;
-        const def = REAGENTS[tr.reagentId];
-        addToHolder(state.blood, tr.reagentId, stepAmt, tr.purity, tr.temp, true, true);
-        def?.exposeMob?.(ctx, tr.method, stepAmt, tr.purity, tr.temp, state.touchProtection);
-        runInBodyReactions(ctx);
+      if (tr.components && tr.components.length > 0) {
+        const totalRem = tr.components.reduce((sum, c) => sum + c.remaining, 0);
+        const stepTotal = Math.min(totalRem, tr.ratePerTick);
+        if (totalRem > 0 && stepTotal > 0) {
+          for (const c of tr.components) {
+            const share = (c.remaining / totalRem) * stepTotal;
+            if (share <= 0) continue;
+            c.remaining = Math.max(0, c.remaining - share);
+            const def = REAGENTS[c.reagentId];
+            addToHolder(state.blood, c.reagentId, share, c.purity, c.temp, true, true);
+            def?.exposeMob?.(ctx, tr.method, share, c.purity, c.temp, state.touchProtection);
+          }
+          runInBodyReactions(ctx);
+        }
+        tr.components = tr.components.filter((c) => c.remaining >= CHEMICAL_VOLUME_ROUNDING);
+        tr.remaining = tr.components.reduce((sum, c) => sum + c.remaining, 0);
+      } else {
+        const stepAmt = Math.min(tr.remaining, tr.ratePerTick);
+        if (stepAmt > 0) {
+          tr.remaining -= stepAmt;
+          const def = REAGENTS[tr.reagentId];
+          addToHolder(state.blood, tr.reagentId, stepAmt, tr.purity, tr.temp, true, true);
+          def?.exposeMob?.(ctx, tr.method, stepAmt, tr.purity, tr.temp, state.touchProtection);
+          runInBodyReactions(ctx);
+        }
       }
       if (tr.remaining < CHEMICAL_VOLUME_ROUNDING) {
         state.activeTransfers.splice(i, 1);

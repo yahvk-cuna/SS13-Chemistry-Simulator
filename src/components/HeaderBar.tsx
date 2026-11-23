@@ -1,10 +1,8 @@
-import { BookOpen, Dices, FlaskConical, Pin, PinOff } from 'lucide-react';
-import type { RngMode, SimPreset } from '../engine/types';
+import { BookOpen, Dices, Download, FlaskConical, Link2, Pin, PinOff, RotateCcw } from 'lucide-react';
+import { SCENARIO_DURATIONS } from '../engine/scenarioShare';
+import type { RngMode } from '../engine/types';
 
 interface HeaderBarProps {
-  presets: SimPreset[];
-  activePresetId: string;
-  onSelectPreset: (id: string) => void;
   durationSeconds: number;
   onDurationChange: (sec: number) => void;
   rngMode: RngMode;
@@ -13,15 +11,13 @@ interface HeaderBarProps {
   onSeedChange: (seed: number) => void;
   hasBaseline: boolean;
   onToggleBaseline: () => void;
+  onShareUrl: () => void;
+  onOpenImportUrl: () => void;
+  onResetScenario: () => void;
   onOpenHandbook: () => void;
 }
 
-const DURATIONS = [60, 120, 180, 300, 600];
-
 export function HeaderBar({
-  presets,
-  activePresetId,
-  onSelectPreset,
   durationSeconds,
   onDurationChange,
   rngMode,
@@ -30,8 +26,15 @@ export function HeaderBar({
   onSeedChange,
   hasBaseline,
   onToggleBaseline,
+  onShareUrl,
+  onOpenImportUrl,
+  onResetScenario,
   onOpenHandbook,
 }: HeaderBarProps) {
+  const durationOptions = SCENARIO_DURATIONS.includes(durationSeconds as (typeof SCENARIO_DURATIONS)[number])
+    ? [...SCENARIO_DURATIONS]
+    : [...SCENARIO_DURATIONS, durationSeconds].sort((a, b) => a - b);
+
   return (
     <header className="header-bar">
       <div className="brand-group">
@@ -48,25 +51,6 @@ export function HeaderBar({
 
       <div className="header-controls">
         <div className="control-group">
-          <span className="control-label">预设场景</span>
-          <select
-            className="ui-select"
-            value={activePresetId}
-            onChange={(e) => onSelectPreset(e.target.value)}
-            aria-label="预设场景"
-          >
-            <option value="custom" disabled>
-              自定义方案
-            </option>
-            {presets.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="control-group">
           <span className="control-label">模拟时长</span>
           <select
             className="ui-select mono"
@@ -74,7 +58,7 @@ export function HeaderBar({
             onChange={(e) => onDurationChange(Number(e.target.value))}
             aria-label="模拟时长"
           >
-            {DURATIONS.map((d) => (
+            {durationOptions.map((d) => (
               <option key={d} value={d}>
                 {d}s ({d / 2} ticks)
               </option>
@@ -130,6 +114,36 @@ export function HeaderBar({
         >
           {hasBaseline ? <PinOff size={14} /> : <Pin size={14} />}
           {hasBaseline ? '清除基准对比' : '固定对比基准'}
+        </button>
+
+        <button
+          type="button"
+          className="btn"
+          onClick={onShareUrl}
+          title="将当前场景写入地址栏 #s=... 并复制分享链接"
+        >
+          <Link2 size={14} />
+          分享链接
+        </button>
+
+        <button
+          type="button"
+          className="btn"
+          onClick={onOpenImportUrl}
+          title="粘贴他人分享的场景 URL 或编码并导入"
+        >
+          <Download size={14} />
+          导入链接
+        </button>
+
+        <button
+          type="button"
+          className="btn"
+          onClick={onResetScenario}
+          title="重置为空白场景（0 伤健康患者与空给药方案）并清除 URL 参数"
+        >
+          <RotateCcw size={14} />
+          重置
         </button>
 
         <button type="button" className="btn btn-primary" onClick={onOpenHandbook}>

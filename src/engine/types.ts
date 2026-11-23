@@ -141,6 +141,7 @@ export interface DoseEvent {
   temp: number;
   ivRate: number; // u/tick for IV_DRIP
   enabled: boolean;
+  patchGroup?: number;
 }
 
 export interface SavedRegimen {
@@ -183,6 +184,13 @@ export interface SimOptions {
   seed: number;
 }
 
+export interface ActiveTransferComponent {
+  reagentId: string;
+  remaining: number;
+  purity: number;
+  temp: number;
+}
+
 export interface ActiveTransferBuffer {
   id: string;
   label: string;
@@ -192,6 +200,7 @@ export interface ActiveTransferBuffer {
   purity: number;
   temp: number;
   method: 'PATCH' | 'INJECT';
+  components?: ActiveTransferComponent[];
 }
 
 export interface SimMutableState {
@@ -341,11 +350,10 @@ export interface SimResult {
   reagentsSeen: string[];
 }
 
-export interface SimPreset {
-  id: string;
-  name: string;
-  description: string;
-  durationSeconds: number;
+export interface SimScenario {
   patient: PatientConfig;
   doses: DoseEvent[];
+  durationSeconds: number;
+  rngMode: RngMode;
+  seed: number;
 }

@@ -6,6 +6,8 @@ import {
   ChevronRight,
   Copy,
   Download,
+  FileText,
+  Layers,
   Plus,
   Save,
   Syringe,
@@ -14,6 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { type ChangeEvent, useEffect, useMemo, useState } from 'react';
+import { PATCH_MAX_VOLUME, PATCH_TRANSFER_PER_TICK } from '../engine/constants';
 import {
   REAGENTS,
   computeEffectiveOD,
@@ -22,9 +25,13 @@ import {
   isNoAllergyReagent,
 } from '../engine/reagents';
 import {
+  type PlainTextRecipeFormat,
+  areReagentsContainerIncompatible,
+  autoPackPatchGroups,
   cloneRegimenDoses,
   createDefaultDose,
   createOrUpdateSavedRegimen,
+  formatRegimenPlainText,
   loadSavedRegimensFromStorage,
   parseRegimensJson,
   saveRegimensToStorage,
@@ -71,6 +78,9 @@ export function RegimenPanel({
 }: RegimenPanelProps) {
   const patientAllergySet = useMemo(() => new Set(patientAllergies), [patientAllergies]);
   const [savedOpen, setSavedOpen] = useState(false);
+  const [plainTextOpen, setPlainTextOpen] = useState(false);
+  const [plainTextFormat, setPlainTextFormat] = useState<PlainTextRecipeFormat>('multiline');
+  const [plainTextIncludeDisabled, setPlainTextIncludeDisabled] = useState(false);
   const [savedRegimens, setSavedRegimens] = useState<SavedRegimen[]>(() => loadSavedRegimensFromStorage());
   const [schemeName, setSchemeName] = useState('');
   const [importOpen, setImportOpen] = useState(false);
@@ -203,6 +213,58 @@ export function RegimenPanel({
     setFeedbackMsg({ type: 'good', text: `已导出全部 ${savedRegimens.length} 套方案至 ss13-regimens.json` });
   };
 
+  const plainTextPreview = useMemo(
+    () =>
+      formatRegimenPlainText(doses, {
+        format: plainTextFormat,
+        title: schemeName.trim() || undefined,
+        includeDisabled: plainTextIncludeDisabled,
+      }),
+    [doses, plainTextFormat, schemeName, plainTextIncludeDisabled],
+  );
+
+  const hasDisabledDoses = useMemo(() => doses.some((d) => !d.enabled), [doses]);
+
+  const handleCopyPlainText = async (targetDoses: DoseEvent[], label?: string, includeDisabled?: boolean) => {
+    const text = formatRegimenPlainText(targetDoses, {
+      format: plainTextFormat,
+      title: label?.trim() || undefined,
+      includeDisabled: includeDisabled ?? plainTextIncludeDisabled,
+    });
+    if (!text) {
+      setFeedbackMsg({ type: 'warn', text: '当前没有可导出的有效给药条目' });
+      return;
+    }
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        setFeedbackMsg({
+          type: 'good',
+          text: label ? `已复制「${label}」纯文本配方` : `已复制${plainTextFormat === 'compact' ? '单行' : '多行'}纯文本配方`,
+        });
+        return;
+      }
+    } catch {
+      // Fallback: open plain-text export drawer so user can copy manually
+    }
+    setPlainTextOpen(true);
+    setFeedbackMsg({ type: 'good', text: '已在「导出纯文本配方」预览框生成，可手动复制' });
+  };
+
+  const handleDownloadPlainText = () => {
+    if (!plainTextPreview) return;
+    const blob = new Blob([plainTextPreview], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'ss13-recipe.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setFeedbackMsg({ type: 'good', text: '已下载纯文本配方 ss13-recipe.txt' });
+  };
+
   const applyImportedText = (rawText: string) => {
     try {
       const imported = parseRegimensJson(rawText);
@@ -252,8 +314,143 @@ export function RegimenPanel({
   };
 
   const updateDose = (id: string, patch: Partial<DoseEvent>) => {
-    onChange(doses.map((d) => (d.id === id ? { ...d, ...patch } : d)));
+    const target = doses.find((d) => d.id === id);
+    if (!target) return;
+
+    onChange(
+      doses.map((d) => {
+        if (d.id === id) {
+          const next: DoseEvent = { ...d, ...patch };
+          if (next.method !== 'PATCH') {
+            delete next.patchGroup;
+          }
+          return next;
+        }
+        // Keep all doses inside the same composite patch synchronized to the same application time
+        if (
+          patch.startTime !== undefined &&
+          target.method === 'PATCH' &&
+          target.patchGroup !== undefined &&
+          d.method === 'PATCH' &&
+          d.patchGroup === target.patchGroup &&
+          patch.method === undefined
+        ) {
+          return { ...d, startTime: patch.startTime };
+        }
+        return d;
+      }),
+    );
   };
+
+  const assignDosePatchGroup = (doseId: string, groupId: number | undefined) => {
+    if (groupId === undefined) {
+      onChange(
+        doses.map((d) => {
+          if (d.id !== doseId) return d;
+          const copy = { ...d };
+          delete copy.patchGroup;
+          return copy;
+        }),
+      );
+      return;
+    }
+
+    const existingMember = doses.find(
+      (d) => d.id !== doseId && d.method === 'PATCH' && d.patchGroup === groupId,
+    );
+    const syncedTime = existingMember?.startTime;
+
+    onChange(
+      doses.map((d) => {
+        if (d.id !== doseId) return d;
+        return {
+          ...d,
+          patchGroup: groupId,
+          ...(syncedTime !== undefined ? { startTime: syncedTime } : {}),
+        };
+      }),
+    );
+  };
+
+  const handleAutoPackPatches = () => {
+    const packed = autoPackPatchGroups(doses);
+    onChange(packed);
+    const groupCount = new Set(
+      packed.filter((d) => d.enabled && d.method === 'PATCH' && d.patchGroup !== undefined).map((d) => d.patchGroup),
+    ).size;
+    setFeedbackMsg({
+      type: groupCount > 0 ? 'good' : 'warn',
+      text: groupCount > 0 ? `已按 ≤40u 自动生成 ${groupCount} 组合并贴片` : '未找到可自动合装至 40u 内的同时间贴片组合',
+    });
+  };
+
+  const dissolvePatchGroup = (groupId: number) => {
+    onChange(
+      doses.map((d) => {
+        if (d.method !== 'PATCH' || d.patchGroup !== groupId) return d;
+        const copy = { ...d };
+        delete copy.patchGroup;
+        return copy;
+      }),
+    );
+  };
+
+  const dissolveAllPatchGroups = () => {
+    onChange(
+      doses.map((d) => {
+        if (d.patchGroup === undefined) return d;
+        const copy = { ...d };
+        delete copy.patchGroup;
+        return copy;
+      }),
+    );
+  };
+
+  const patchGroupSummaries = useMemo(() => {
+    const map = new Map<number, DoseEvent[]>();
+    for (const d of doses) {
+      if (d.method === 'PATCH' && d.patchGroup !== undefined) {
+        const list = map.get(d.patchGroup) ?? [];
+        list.push(d);
+        map.set(d.patchGroup, list);
+      }
+    }
+    return Array.from(map.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([groupId, members]) => {
+        const activeMembers = members.filter((m) => m.enabled && m.volume > 0);
+        const totalVol = activeMembers.reduce((sum, m) => sum + m.volume, 0);
+        let hasIncompatible = false;
+        for (let i = 0; i < activeMembers.length && !hasIncompatible; i++) {
+          for (let j = i + 1; j < activeMembers.length; j++) {
+            if (areReagentsContainerIncompatible(activeMembers[i].reagentId, activeMembers[j].reagentId)) {
+              hasIncompatible = true;
+              break;
+            }
+          }
+        }
+        return {
+          groupId,
+          memberCount: members.length,
+          activeCount: activeMembers.length,
+          totalVol,
+          overCap: totalVol > PATCH_MAX_VOLUME + 1e-6,
+          hasIncompatible,
+        };
+      });
+  }, [doses]);
+
+  const nextNewPatchGroupId = useMemo(() => {
+    const used = new Set(patchGroupSummaries.map((g) => g.groupId));
+    let n = 1;
+    while (used.has(n) && n < 99) n += 1;
+    return n;
+  }, [patchGroupSummaries]);
+
+  const activePatchCount = useMemo(
+    () => doses.filter((d) => d.enabled && d.method === 'PATCH' && d.volume > 0).length,
+    [doses],
+  );
 
   const duplicateDose = (dose: DoseEvent) => {
     const copy: DoseEvent = {
@@ -367,8 +564,23 @@ export function RegimenPanel({
       }
     }
 
+    for (const g of patchGroupSummaries) {
+      if (g.hasIncompatible) {
+        warnings.push({
+          level: 'danger',
+          text: `合片 #${g.groupId} 含禁忌混装：彭斯莱特与肾上腺素/阿托品不可共装在同一张贴片内！`,
+        });
+      }
+      if (g.overCap) {
+        warnings.push({
+          level: 'warn',
+          text: `合片 #${g.groupId} 容量超限：总计 ${Number(g.totalVol.toFixed(2))}u > 单张贴片上限 ${PATCH_MAX_VOLUME}u。`,
+        });
+      }
+    }
+
     return warnings;
-  }, [doses, patientAllergySet, hasChemicalAllergy]);
+  }, [doses, patientAllergySet, hasChemicalAllergy, patchGroupSummaries]);
 
   return (
     <section className="panel">
@@ -621,6 +833,14 @@ export function RegimenPanel({
                           <button
                             type="button"
                             className="btn btn-icon"
+                            title="复制此单套方案纯文本配方"
+                            onClick={() => void handleCopyPlainText(item.doses, item.name, true)}
+                          >
+                            <FileText size={11} />
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-icon"
                             title="复制此单套方案 JSON"
                             onClick={() => void copyJsonPayload([item], `已复制方案「${item.name}」JSON`)}
                           >
@@ -641,6 +861,79 @@ export function RegimenPanel({
                 })}
               </div>
             )}
+          </div>
+        )}
+
+        <button type="button" className="collapse-btn" onClick={() => setPlainTextOpen((v) => !v)}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <FileText size={13} style={{ color: 'var(--accent)' }} />
+            <span>导出纯文本配方</span>
+          </span>
+          {plainTextOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </button>
+
+        {plainTextOpen && (
+          <div className="sub-box">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, flexWrap: 'wrap' }}>
+              <div className="seg-toggle">
+                <button
+                  type="button"
+                  className={`seg-btn ${plainTextFormat === 'multiline' ? 'active' : ''}`}
+                  onClick={() => setPlainTextFormat('multiline')}
+                >
+                  多行清单
+                </button>
+                <button
+                  type="button"
+                  className={`seg-btn ${plainTextFormat === 'compact' ? 'active' : ''}`}
+                  onClick={() => setPlainTextFormat('compact')}
+                >
+                  单行紧凑
+                </button>
+              </div>
+              {hasDisabledDoses && (
+                <label className={`checkbox-pill ${plainTextIncludeDisabled ? 'checked' : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={plainTextIncludeDisabled}
+                    onChange={(e) => setPlainTextIncludeDisabled(e.target.checked)}
+                  />
+                  <span>含禁用项</span>
+                </label>
+              )}
+            </div>
+
+            <textarea
+              readOnly
+              className="ui-input mono"
+              rows={plainTextFormat === 'multiline' ? 6 : 3}
+              style={{ width: '100%', resize: 'vertical', fontSize: 11 }}
+              value={plainTextPreview}
+              placeholder="当前暂无启用的给药条目..."
+              onFocus={(e) => e.currentTarget.select()}
+              aria-label="纯文本给药配方预览"
+            />
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+              <button
+                type="button"
+                className="btn btn-sm"
+                disabled={!plainTextPreview}
+                onClick={handleDownloadPlainText}
+              >
+                <Download size={11} />
+                下载 .txt
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                disabled={!plainTextPreview}
+                onClick={() => void handleCopyPlainText(doses, schemeName)}
+              >
+                <Copy size={11} />
+                复制纯文本
+              </button>
+            </div>
           </div>
         )}
 
@@ -671,6 +964,57 @@ export function RegimenPanel({
           </div>
         </div>
 
+        {(activePatchCount >= 2 || patchGroupSummaries.length > 0) && (
+          <div className="sub-box" style={{ gap: 6, padding: '7px 8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, flexWrap: 'wrap' }}>
+              <span className="control-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                <Layers size={12} style={{ color: 'var(--accent)' }} />
+                <span>贴片合装（共享 0.75u/t · 上限 {PATCH_MAX_VOLUME}u）</span>
+              </span>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  disabled={activePatchCount < 2}
+                  title="将同时间点且总量 ≤40u 的贴片自动合并（避开禁忌组合）"
+                  onClick={handleAutoPackPatches}
+                >
+                  自动合片 (≤40u)
+                </button>
+                {patchGroupSummaries.length > 0 && (
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    title="拆散全部合片组为独立贴片"
+                    onClick={dissolveAllPatchGroups}
+                  >
+                    全部拆片
+                  </button>
+                )}
+              </div>
+            </div>
+            {patchGroupSummaries.length > 0 && (
+              <div className="quick-chips">
+                {patchGroupSummaries.map((g) => (
+                  <button
+                    key={g.groupId}
+                    type="button"
+                    className={`tag-chip ${g.hasIncompatible ? 'danger' : g.overCap ? 'warn' : 'good'}`}
+                    style={{ cursor: 'pointer' }}
+                    title={`点击拆散合片 #${g.groupId}`}
+                    onClick={() => dissolvePatchGroup(g.groupId)}
+                  >
+                    <span className="mono">
+                      合片 #{g.groupId} · {Number(g.totalVol.toFixed(1))}/{PATCH_MAX_VOLUME}u · {g.activeCount}药
+                    </span>
+                    <X size={10} />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {preflightWarnings.map((w, idx) => (
           <div key={idx} className={`warning-banner ${w.level}`}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
@@ -696,6 +1040,18 @@ export function RegimenPanel({
           const hitsExtremeAllergy = patientAllergySet.has(dose.reagentId);
           const hitsChemicalAllergy = hasChemicalAllergy && isChemicalAllergyTrigger(def);
           const isAllergyHit = dose.enabled && (hitsExtremeAllergy || hitsChemicalAllergy);
+          const patchSummary =
+            dose.method === 'PATCH' && dose.patchGroup !== undefined
+              ? patchGroupSummaries.find((g) => g.groupId === dose.patchGroup)
+              : undefined;
+          const patchRateLabel =
+            dose.method !== 'PATCH'
+              ? ''
+              : dose.patchGroup === undefined
+                ? `${PATCH_TRANSFER_PER_TICK}u/t`
+                : dose.enabled && patchSummary && patchSummary.totalVol > 0
+                  ? `分摊 ${(PATCH_TRANSFER_PER_TICK * (dose.volume / patchSummary.totalVol)).toFixed(2)}u/t`
+                  : `合片#${dose.patchGroup}`;
           return (
             <div key={dose.id} className={`dose-card ${dose.enabled ? '' : 'disabled'}${isAllergyHit ? ' allergy-hit' : ''}`}>
               <div className="dose-head">
@@ -775,7 +1131,8 @@ export function RegimenPanel({
 
               {isCollapsed ? (
                 <div className="dose-sub mono" style={{ paddingLeft: 27 }}>
-                  {dose.volume}u · {methodShort} · t={dose.startTime}s · 纯度 {Math.round(dose.purity * 100)}%
+                  {dose.volume}u · {methodShort}
+                  {dose.method === 'PATCH' && dose.patchGroup !== undefined ? `(合片#${dose.patchGroup})` : ''} · t={dose.startTime}s · 纯度 {Math.round(dose.purity * 100)}%
                 </div>
               ) : (
                 <>
@@ -834,6 +1191,35 @@ export function RegimenPanel({
                       />
                     </div>
                   </div>
+
+                  {dose.method === 'PATCH' && (
+                    <div className="patch-group-row">
+                      <span className="control-label">贴片容器</span>
+                      <select
+                        className="ui-select"
+                        style={{ flex: 1, minWidth: 0, fontSize: 11.5 }}
+                        value={dose.patchGroup ?? ''}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          assignDosePatchGroup(dose.id, raw === '' ? undefined : Number(raw));
+                        }}
+                      >
+                        <option value="">独立贴片 ({PATCH_TRANSFER_PER_TICK}u/t)</option>
+                        {patchGroupSummaries.map((g) => (
+                          <option key={g.groupId} value={g.groupId}>
+                            合片 #{g.groupId} ({Number(g.totalVol.toFixed(1))}/{PATCH_MAX_VOLUME}u · {g.memberCount}药)
+                          </option>
+                        ))}
+                        {!(
+                          dose.patchGroup !== undefined &&
+                          (patchGroupSummaries.find((g) => g.groupId === dose.patchGroup)?.memberCount ?? 0) <= 1
+                        ) && <option value={nextNewPatchGroupId}>+ 新建合片 #{nextNewPatchGroupId}</option>}
+                      </select>
+                      <span className="mono dose-sub" style={{ whiteSpace: 'nowrap' }}>
+                        {patchRateLabel}
+                      </span>
+                    </div>
+                  )}
 
                   <div>
                     <div

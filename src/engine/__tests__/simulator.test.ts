@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { BLOOD_VOLUME_NORMAL, BLOOD_VOLUME_OKAY } from '../constants';
-import { SIM_PRESETS, makeBasePatient } from '../presets';
 import {
   EFFECT_TRAITS,
   EXTREME_ALLERGY_CANDIDATES,
@@ -16,11 +15,22 @@ import {
   cloneRegimenDoses,
   createDefaultDose,
   createOrUpdateSavedRegimen,
+  formatRegimenPlainText,
   parseRegimensJson,
   serializeRegimensJson,
+  autoPackPatchGroups,
 } from '../regimenStorage';
+import {
+  buildScenarioShareUrl,
+  createBlankScenario,
+  decodeScenarioPayload,
+  encodeScenarioPayload,
+  makeBasePatient,
+  parseScenarioFromUrlOrText,
+  tryReadScenarioFromHash,
+} from '../scenarioShare';
 import { runSimulation } from '../simulator';
-import type { DoseEvent } from '../types';
+import type { DoseEvent, SimScenario } from '../types';
 
 function dose(
   reagentId: string,
@@ -198,8 +208,20 @@ describe('Tianguan13 Pharmacology Simulator', () => {
     expect(warm.snapshots[1].brute).toBeCloseTo(50, 2);
 
     const cold = runSimulation(
-      SIM_PRESETS.find((p) => p.id === 'cryo-pod')!.patient,
-      SIM_PRESETS.find((p) => p.id === 'cryo-pod')!.doses,
+      makeBasePatient({
+        brute: 45,
+        burn: 45,
+        tox: 30,
+        oxy: 30,
+        woundSeverity: 'severe',
+        woundCount: 2,
+        bleedFlow: 1.5,
+        bodyTemp: 220,
+        ambientTemp: 170,
+        environment: 'cryo',
+        unconscious: true,
+      }),
+      [dose('cryoxadone', 30, { purity: 1.0 })],
       { durationSeconds: 120, rngMode: 'expected', seed: 1 },
     );
     expect(cold.snapshots[cold.snapshots.length - 1].woundsRemaining).toBe(0);
@@ -220,20 +242,214 @@ describe('Tianguan13 Pharmacology Simulator', () => {
     expect(res.snapshots[1].brute).toBeCloseTo(40, 2);
   });
 
-  it('runs all 10 presets cleanly with finite values', () => {
-    for (const preset of SIM_PRESETS) {
-      const res = runSimulation(preset.patient, preset.doses, {
-        durationSeconds: preset.durationSeconds,
-        rngMode: 'expected',
-        seed: 42,
-      });
-      expect(res.snapshots.length).toBeGreaterThan(10);
-      for (const s of res.snapshots) {
-        expect(Number.isFinite(s.health)).toBe(true);
-        expect(Number.isFinite(s.bodyTemp)).toBe(true);
-        expect(Number.isFinite(s.bloodVolume)).toBe(true);
-      }
-    }
+  it('encodes and decodes blank and complex scenarios cleanly via shareable URLs', () => {
+    const blank = createBlankScenario();
+    const blankPayload = encodeScenarioPayload(blank);
+    const decodedBlank = decodeScenarioPayload(blankPayload);
+    expect(decodedBlank.patient).toEqual(blank.patient);
+    expect(decodedBlank.doses).toEqual([]);
+    expect(decodedBlank.durationSeconds).toBe(180);
+    expect(decodedBlank.rngMode).toBe('expected');
+
+    const complex: SimScenario = {
+      patient: makeBasePatient({
+        brute: 55,
+        burn: 32.5,
+        tox: 18,
+        oxy: 12,
+        stamina: 40,
+        liverType: 'cyber_t2',
+        metabolismEfficiency: 1.25,
+        bloodVolume: 420,
+        bleedFlow: 2.5,
+        woundSeverity: 'severe',
+        woundCount: 2,
+        bodyTemp: 240,
+        ambientTemp: 170,
+        environment: 'cryo',
+        onFire: true,
+        fireStacks: 6,
+        irradiated: true,
+        unconscious: true,
+        inStasis: true,
+        touchProtection: 0.5,
+        husked: true,
+        allergies: ['sal_acid', 'atropine'],
+        chemicalAllergy: true,
+        organs: { liver: 25, heart: 10, lungs: 15, stomach: 5, brain: 30, eyes: 12, ears: 8 },
+      }),
+      doses: [
+        dose('sal_acid', 15, { method: 'PATCH', startTime: 0, purity: 1.0, enabled: true, patchGroup: 1 }),
+        dose('atropine', 10, { method: 'PATCH', startTime: 0, purity: 1.0, enabled: true, patchGroup: 1 }),
+        dose('seiver', 10, { method: 'INJECT', startTime: 6, purity: 0.75, temp: 220, enabled: false }),
+        dose('syriniver', 20, { method: 'IV_DRIP', startTime: 4, purity: 0.75, ivRate: 1.5, enabled: true }),
+      ],
+      durationSeconds: 300,
+      rngMode: 'random',
+      seed: 9876,
+    };
+
+    const shareUrl = buildScenarioShareUrl(complex, 'https://chem.example.org/sim/');
+    expect(shareUrl.startsWith('https://chem.example.org/sim/#s=')).toBe(true);
+
+    const parsedFromFullUrl = parseScenarioFromUrlOrText(shareUrl);
+    expect(parsedFromFullUrl.patient).toEqual(complex.patient);
+    expect(parsedFromFullUrl.durationSeconds).toBe(300);
+    expect(parsedFromFullUrl.rngMode).toBe('random');
+    expect(parsedFromFullUrl.seed).toBe(9876);
+    expect(parsedFromFullUrl.doses.length).toBe(4);
+    expect(parsedFromFullUrl.doses[0].method).toBe('PATCH');
+    expect(parsedFromFullUrl.doses[0].purity).toBe(1);
+    expect(parsedFromFullUrl.doses[0].patchGroup).toBe(1);
+    expect(parsedFromFullUrl.doses[1].patchGroup).toBe(1);
+    expect(parsedFromFullUrl.doses[2].temp).toBe(220);
+    expect(parsedFromFullUrl.doses[2].enabled).toBe(false);
+    expect(parsedFromFullUrl.doses[3].ivRate).toBe(1.5);
+
+    const hashRead = tryReadScenarioFromHash(new URL(shareUrl).hash);
+    expect(hashRead.error).toBeNull();
+    expect(hashRead.scenario?.patient).toEqual(complex.patient);
+
+    // Run simulation cleanly on decoded scenario
+    const simRes = runSimulation(parsedFromFullUrl.patient, parsedFromFullUrl.doses, {
+      durationSeconds: parsedFromFullUrl.durationSeconds,
+      rngMode: parsedFromFullUrl.rngMode,
+      seed: parsedFromFullUrl.seed,
+    });
+    expect(simRes.snapshots.length).toBeGreaterThan(10);
+
+    // Also supports bare payload string and #s= fragment; rejects malformed strings cleanly
+    const fromBare = parseScenarioFromUrlOrText(encodeScenarioPayload(complex));
+    expect(fromBare.patient.allergies).toEqual(['sal_acid', 'atropine']);
+    const badHash = tryReadScenarioFromHash('#s=invalid_payload!!!');
+    expect(badHash.scenario).toBeNull();
+    expect(badHash.error).toBeTruthy();
+  });
+
+  it('simulates proportional 0.75u/t release for composite patches and pauses in stasis', () => {
+    const groupedRes = runSimulation(
+      makeBasePatient({ brute: 30, burn: 30 }),
+      [
+        dose('libital', 15, { method: 'PATCH', purity: 1.0, patchGroup: 1 }),
+        dose('lenturi', 15, { method: 'PATCH', purity: 1.0, patchGroup: 1 }),
+      ],
+      { durationSeconds: 6, rngMode: 'expected', seed: 1 },
+    );
+
+    const s1 = groupedRes.snapshots[1];
+    // 15u + 15u share 0.75u/t -> 0.375u each into blood; each metabolizes 0.2u -> 0.175u left
+    expect(s1.activeTransfers.length).toBe(1);
+    expect(s1.activeTransfers[0].remaining).toBeCloseTo(29.25, 2);
+    expect(s1.bloodReagents.find((r) => r.id === 'libital')?.volume).toBeCloseTo(0.175, 3);
+    expect(s1.bloodReagents.find((r) => r.id === 'lenturi')?.volume).toBeCloseTo(0.175, 3);
+
+    // Compare with standalone patches (0.75u each -> 0.55u left after 0.2u metabolism)
+    const separateRes = runSimulation(
+      makeBasePatient({ brute: 30, burn: 30 }),
+      [
+        dose('libital', 15, { method: 'PATCH', purity: 1.0 }),
+        dose('lenturi', 15, { method: 'PATCH', purity: 1.0 }),
+      ],
+      { durationSeconds: 6, rngMode: 'expected', seed: 1 },
+    );
+    expect(separateRes.snapshots[1].bloodReagents.find((r) => r.id === 'libital')?.volume).toBeCloseTo(0.55, 3);
+
+    // Composite patch pauses completely while in stasis
+    const stasisRes = runSimulation(
+      makeBasePatient({ brute: 30, burn: 30, inStasis: true }),
+      [
+        dose('libital', 15, { method: 'PATCH', purity: 1.0, patchGroup: 1 }),
+        dose('lenturi', 15, { method: 'PATCH', purity: 1.0, patchGroup: 1 }),
+      ],
+      { durationSeconds: 6, rngMode: 'expected', seed: 1 },
+    );
+    expect(stasisRes.snapshots[1].activeTransfers[0].remaining).toBeCloseTo(30, 2);
+    expect(stasisRes.snapshots[1].bloodReagents).toEqual([]);
+  });
+
+  it('auto-packs patches ≤40u cleanly and avoids explosive penthrite combinations', () => {
+    const packed = autoPackPatchGroups([
+      dose('libital', 25, { method: 'PATCH', startTime: 0, purity: 1.0 }),
+      dose('lenturi', 15, { method: 'PATCH', startTime: 0, purity: 1.0 }),
+      dose('aiuri', 20, { method: 'PATCH', startTime: 0, purity: 1.0 }),
+      dose('penthrite', 10, { method: 'PATCH', startTime: 10, purity: 0.75 }),
+      dose('epinephrine', 10, { method: 'PATCH', startTime: 10, purity: 1.0 }),
+      dose('sal_acid', 15, { method: 'INJECT', startTime: 0, purity: 1.0 }),
+    ]);
+
+    // t=0: 25 + 15 = 40u grouped as #1; 20u cannot fit and stays single -> ungrouped
+    expect(packed[0].patchGroup).toBe(1);
+    expect(packed[1].patchGroup).toBe(1);
+    expect(packed[2].patchGroup).toBeUndefined();
+    // t=10: penthrite + epinephrine must NOT share a patch
+    expect(packed[3].patchGroup).toBeUndefined();
+    expect(packed[4].patchGroup).toBeUndefined();
+    expect(packed[5].patchGroup).toBeUndefined();
+  });
+
+  it('exports recipe-style plain text with container packing and conditional timestamps', () => {
+    // Single-step plan (all t=0s): must omit timestamps and keep drug/volume/purity + merged containers
+    const singleStepDoses: DoseEvent[] = [
+      dose('libital', 15, { method: 'PATCH', startTime: 0, purity: 1.0, enabled: true }),
+      dose('lenturi', 15, { method: 'PATCH', startTime: 0, purity: 1.0, enabled: true }),
+      dose('multiver', 15, { method: 'INGEST', startTime: 0, purity: 0.75, enabled: true }),
+      dose('salglu_solution', 30, { method: 'INGEST', startTime: 0, purity: 1.0, enabled: true }),
+    ];
+
+    expect(formatRegimenPlainText([], { format: 'multiline' })).toBe('');
+
+    const singleMulti = formatRegimenPlainText(singleStepDoses, {
+      format: 'multiline',
+      title: '外伤标准救治',
+    });
+    expect(singleMulti).toContain('【外伤标准救治】');
+    expect(singleMulti).not.toContain('原料');
+    expect(singleMulti).toContain('成品配制：');
+    expect(singleMulti).toContain('复合贴片 #1（30/40u）：利比特 15u（100%） + 伦图里 15u（100%）');
+    expect(singleMulti).toContain('复合药丸 #1（45/50u）：盐水葡萄糖溶液 30u（100%） + 多功能解毒剂 15u（75%）');
+    expect(singleMulti).not.toContain('t=');
+
+    const singleCompact = formatRegimenPlainText(singleStepDoses, {
+      format: 'compact',
+    });
+    expect(singleCompact).not.toContain('t=');
+    expect(singleCompact).toContain('[复合贴片#1 30/40u]');
+    expect(singleCompact).toContain('[复合药丸#1 45/50u]');
+
+    // Multi-step plan + explicit patch group + over-50u pill split + incompatible container avoidance
+    const multiStepDoses: DoseEvent[] = [
+      dose('penthrite', 10, { method: 'PATCH', startTime: 0, purity: 0.75, enabled: true }),
+      dose('epinephrine', 10, { method: 'PATCH', startTime: 0, purity: 1.0, enabled: true }),
+      dose('seiver', 10, { method: 'INJECT', startTime: 8, purity: 0.75, temp: 220, enabled: true }),
+      dose('syriniver', 20, { method: 'IV_DRIP', startTime: 8, purity: 0.75, ivRate: 1.5, enabled: true }),
+      dose('libital', 15, { method: 'PATCH', startTime: 12, purity: 1.0, patchGroup: 2, enabled: true }),
+      dose('aiuri', 15, { method: 'PATCH', startTime: 12, purity: 1.0, patchGroup: 2, enabled: true }),
+      dose('lenturi', 12, { method: 'INGEST', startTime: 4, purity: 0.85, enabled: false }),
+    ];
+
+    const multiRecipe = formatRegimenPlainText(multiStepDoses, {
+      format: 'multiline',
+      includeDisabled: false,
+    });
+    expect(multiRecipe).toContain('配制与施药步骤：');
+    expect(multiRecipe).toContain('第 1 步 [t=0s]');
+    expect(multiRecipe).toContain('第 2 步 [t=8s]');
+    expect(multiRecipe).toContain('第 3 步 [t=12s]');
+    expect(multiRecipe).toContain('复合贴片 #3（30/40u）：利比特 15u（100%） + 艾尤里 15u（100%）');
+    expect(multiRecipe).toContain('静脉滴注（20u · 1.5u/t）：木泰尔 20u（75%）');
+    expect(multiRecipe).not.toContain('伦图里');
+    // Penthrite and Epinephrine must stay in separate patches (#1 and #2)
+    expect(multiRecipe).not.toMatch(/复合贴片 #1.*彭斯莱特.*肾上腺素/);
+
+    const compactAll = formatRegimenPlainText(multiStepDoses, {
+      format: 'compact',
+      includeDisabled: true,
+    });
+    expect(compactAll).toContain('[t=0s]');
+    expect(compactAll).toContain('[t=4s] [药丸#1 12/50u] 伦图里 12u(85%, 禁用)');
+    expect(compactAll).toContain('[t=8s]');
+    expect(compactAll).toContain('220K');
+    expect(compactAll).toContain('[t=12s]');
   });
 
   it('saves, overwrites, clones with fresh IDs, and imports/exports regimens via JSON', () => {

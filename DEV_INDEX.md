@@ -27,6 +27,8 @@
 
 | 文件 | 职责 |
 | :--- | :--- |
+| [README.md](file:///home/yahvk/ss13-chem-sim/README.md) | 项目中文说明文档：核心特性、技术栈、快速开始命令、目录概览与 AGPL-3.0 协议说明 |
+| [LICENSE](file:///home/yahvk/ss13-chem-sim/LICENSE) | GNU Affero General Public License v3.0（AGPL-3.0-or-later）全文 |
 | [AGENTS.md](file:///home/yahvk/ss13-chem-sim/AGENTS.md) | Antigravity 工作区常驻规则：强制先读并同步维护 `DEV_INDEX.md`、禁止写入易变数据、汉化优先级与必跑校验 |
 | [DEV_INDEX.md](file:///home/yahvk/ss13-chem-sim/DEV_INDEX.md) | 本项目开发索引、上游 `Tianguan13` 精确路径图谱、公式速查、试剂清单与开发日志 |
 | [package.json](file:///home/yahvk/ss13-chem-sim/package.json) | 依赖版本与 `dev / build / preview / test / typecheck` 脚本 |
@@ -34,30 +36,31 @@
 | [vite.config.ts](file:///home/yahvk/ss13-chem-sim/vite.config.ts) | Vite `base: './'` + `@vitejs/plugin-react` + Vitest `include: ['src/**/*.test.ts']` |
 | [index.html](file:///home/yahvk/ss13-chem-sim/index.html) | 中文页面标题与 `#root` 挂载点 |
 | [src/main.tsx](file:///home/yahvk/ss13-chem-sim/src/main.tsx) | React 入口，加载 `App` 与 `./styles/index.css` |
-| [src/App.tsx](file:///home/yahvk/ss13-chem-sim/src/App.tsx) | 全局状态（预设、患者、给药方案、时长、RNG 模式/种子、基准对比、播放倍速、图鉴弹窗）与三栏总装配 |
+| [src/App.tsx](file:///home/yahvk/ss13-chem-sim/src/App.tsx) | 全局状态（URL Hash 初始化与同步、患者、给药方案、时长、RNG 模式/种子、基准对比、播放倍速、图鉴与分享弹窗）与三栏总装配 |
 | [src/styles/index.css](file:///home/yahvk/ss13-chem-sim/src/styles/index.css) | 暗色医疗 HUD 主题、CSS 变量、响应式三栏网格（`1180px` 以下切为双栏+全宽底栏，卡片胶囊不折行） |
 
 ### 2.2 核心仿真引擎（`src/engine/`）
 
 | 文件 | 核心导出与职责 |
 | :--- | :--- |
-| [src/engine/constants.ts](file:///home/yahvk/ss13-chem-sim/src/engine/constants.ts) | `SSMOBS_DT`、`REAGENTS_METABOLISM`、`REM`、胃吸收常量、生命阈值、血量分层、体温常数、`LIVER_PRESETS`（6 种肝脏配置）、`metabolizeFreeConstant`、`roundStep`、`clamp`、`getTempChangeAmount` |
-| [src/engine/types.ts](file:///home/yahvk/ss13-chem-sim/src/engine/types.ts) | 全部引擎数据结构：`DeliveryMethod`、`ReagentCategory`、`MobStat`、`OrganSlot`、`ReagentDef`、`ReagentInstance`、`SimContext`、`DoseEvent`、`PatientConfig`（含 `allergies`、`chemicalAllergy`）、`SimMutableState`、`TickSnapshot`、`SimEvent`（含 `'allergy'`）、`SimSummary`（含 `triggeredDangerReactions`、`triggeredAllergies`）、`SimResult`、`SimPreset` |
+| [src/engine/constants.ts](file:///home/yahvk/ss13-chem-sim/src/engine/constants.ts) | `SSMOBS_DT`、`REAGENTS_METABOLISM`、`REM`、`PATCH_TRANSFER_PER_TICK`、`PATCH_MAX_VOLUME`（40u）、`PILL_MAX_VOLUME`（50u）、胃吸收常量、生命阈值、血量分层、体温常数、`LIVER_PRESETS`（6 种肝脏配置）、`metabolizeFreeConstant`、`roundStep`、`clamp`、`getTempChangeAmount` |
+| [src/engine/types.ts](file:///home/yahvk/ss13-chem-sim/src/engine/types.ts) | 全部引擎数据结构：`DeliveryMethod`、`ReagentCategory`、`MobStat`、`OrganSlot`、`ReagentDef`、`ReagentInstance`、`SimContext`、`DoseEvent`（含 `patchGroup`）、`ActiveTransferComponent`、`PatientConfig`（含 `allergies`、`chemicalAllergy`）、`SimMutableState`、`TickSnapshot`、`SimEvent`（含 `'allergy'`）、`SimSummary`（含 `triggeredDangerReactions`、`triggeredAllergies`）、`SimResult`、`SimScenario` |
 | [src/engine/rng.ts](file:///home/yahvk/ss13-chem-sim/src/engine/rng.ts) | `createRng`（Mulberry32 确定性伪随机）、`sptProbRate`（对应 BYOND `SPT_PROB_RATE`: `1 - (1 - p)^dt`） |
 | [src/engine/reactions.ts](file:///home/yahvk/ss13-chem-sim/src/engine/reactions.ts) | `runInBodyReactions(ctx)`：彭斯莱特+肾上腺素/阿托品体内爆炸清血、代谢因子+营养物→治疗肽、抑制因子+营养物→朊病毒肽 |
 | [src/engine/reagents.ts](file:///home/yahvk/ss13-chem-sim/src/engine/reagents.ts) | 全部内置试剂定义与生命周期钩子、`REAGENT_LIST`、`REAGENTS`、`ALLERGY_BLACKLIST_IDS`、`STOMACH_FOOD_IDS`、`EXTREME_ALLERGY_CANDIDATES`、`isExtremeAllergyCandidate`、`isChemicalAllergyTrigger`、`isNoAllergyReagent`、`rollRandomAllergies`、`MECHANISM_TRAITS`（含 `无过敏`）、`EFFECT_TRAITS`、`getReagentTraits`、`getDisplayColor`、`computeEffectiveOD` |
-| [src/engine/simulator.ts](file:///home/yahvk/ss13-chem-sim/src/engine/simulator.ts) | `runSimulation(patient, doses, options)`：12 步 Tick 主循环（含极端药物过敏与肾上腺素阻断、呕吐排胃及 4b 化学过敏基因突变）、`addToHolder`、`computeStat`、`organStatusLabel`、`syncTraits` 及事件/汇总生成 |
-| [src/engine/presets.ts](file:///home/yahvk/ss13-chem-sim/src/engine/presets.ts) | `makeBasePatient` 与典型医疗对抗预设 `SIM_PRESETS` |
-| [src/engine/regimenStorage.ts](file:///home/yahvk/ss13-chem-sim/src/engine/regimenStorage.ts) | 给药方案存档持久化与默认剂量工具：`createDefaultDose`、`cloneRegimenDoses`、`sanitizeDoseEvent`、`createOrUpdateSavedRegimen`、`serializeRegimensJson`、`parseRegimensJson`、`loadSavedRegimensFromStorage`、`saveRegimensToStorage` |
+| [src/engine/simulator.ts](file:///home/yahvk/ss13-chem-sim/src/engine/simulator.ts) | `runSimulation(patient, doses, options)`：12 步 Tick 主循环（含复合贴片按比例共享 `0.75u/t` 缓释、极端药物过敏与肾上腺素阻断、呕吐排胃及 4b 化学过敏基因突变）、`addToHolder`、`computeStat`、`organStatusLabel`、`syncTraits` 及事件/汇总生成 |
+| [src/engine/scenarioShare.ts](file:///home/yahvk/ss13-chem-sim/src/engine/scenarioShare.ts) | 患者构造与场景 URL Hash（`#s=`）差量短键 Base64URL 编解码（含 `patchGroup`）：`makeBasePatient`、`createBlankScenario`、`encodeScenarioPayload`、`decodeScenarioPayload`、`buildScenarioShareUrl`、`extractScenarioPayloadFromInput`、`parseScenarioFromUrlOrText`、`tryReadScenarioFromHash` |
+| [src/engine/regimenStorage.ts](file:///home/yahvk/ss13-chem-sim/src/engine/regimenStorage.ts) | 给药方案存档、合片装箱、菜谱导出与默认剂量工具：`createDefaultDose`、`cloneRegimenDoses`、`sanitizeDoseEvent`、`createOrUpdateSavedRegimen`、`serializeRegimensJson`、`parseRegimensJson`、`areReagentsContainerIncompatible`、`autoPackPatchGroups`、`formatRegimenPlainText`、`loadSavedRegimensFromStorage`、`saveRegimensToStorage` |
 | [src/engine/__tests__/simulator.test.ts](file:///home/yahvk/ss13-chem-sim/src/engine/__tests__/simulator.test.ts) | Vitest 核心机制回归测试套件 |
 
 ### 2.3 前端界面组件（`src/components/`）
 
 | 文件 | 职责 |
 | :--- | :--- |
-| [src/components/HeaderBar.tsx](file:///home/yahvk/ss13-chem-sim/src/components/HeaderBar.tsx) | 顶部栏：预设选择、模拟时长（60–600s）、期望/随机模式与种子、`固定对比基准`、`药品图鉴`开关 |
-| [src/components/PatientPanel.tsx](file:///home/yahvk/ss13-chem-sim/src/components/PatientPanel.tsx) | 患者初始状态：五维伤害滑块、一键伤势预设、7 个器官损伤与 6 种肝脏型号、血量/出血/伤口等级、体温与环境（标准/低温仓/高温/真空）以及「药物过敏与免疫异常」（极端药物过敏多选/上游抽选 6 种 + 化学过敏基因突变开关） |
-| [src/components/RegimenPanel.tsx](file:///home/yahvk/ss13-chem-sim/src/components/RegimenPanel.tsx) | 多药组合方案、可折叠方案存档管理区（两行窄栏排版、二次确认覆盖/删除/清空、复制当前/导出全部/导入 JSON）、常用速添与药名自定义暗色悬浮提示、单卡折叠与纯度快切、过敏原高亮与配伍预检横幅 |
+| [src/components/HeaderBar.tsx](file:///home/yahvk/ss13-chem-sim/src/components/HeaderBar.tsx) | 顶部栏：模拟时长（60–600s）、期望/随机模式与种子、`固定对比基准`、`分享链接`、`导入链接`、`重置`、`药品图鉴`开关 |
+| [src/components/PatientPanel.tsx](file:///home/yahvk/ss13-chem-sim/src/components/PatientPanel.tsx) | 患者初始状态：五维伤害滑块、一键伤势快捷填充、7 个器官损伤与 6 种肝脏型号、血量/出血/伤口等级、体温与环境（标准/低温仓/高温/真空）以及「药物过敏与免疫异常」（极端药物过敏多选/上游抽选 6 种 + 化学过敏基因突变开关） |
+| [src/components/RegimenPanel.tsx](file:///home/yahvk/ss13-chem-sim/src/components/RegimenPanel.tsx) | 多药组合方案、可折叠方案存档管理区（两行窄栏排版、二次确认覆盖/删除/清空、复制当前/导出全部/导入 JSON）、导出纯文本菜谱抽屉（多行菜谱/单行紧凑切换、复制与下载 `.txt`）、贴片合装（`autoPackPatchGroups` 一键合片与单卡容器归组/分摊速率显示）、常用速添与药名自定义暗色悬浮提示、单卡折叠与纯度快切、过敏原高亮与配伍预检横幅 |
+| [src/components/ScenarioShareModal.tsx](file:///home/yahvk/ss13-chem-sim/src/components/ScenarioShareModal.tsx) | 场景 URL 分享与导入弹窗：只读 `#s=...` 链接预览与复制、URL/编码串粘贴导入并替换当前场景 |
 | [src/components/SummaryStrip.tsx](file:///home/yahvk/ss13-chem-sim/src/components/SummaryStrip.tsx) | 5 张 KPI 总结卡：终末 HP 与 `STAT_ZH` 徽章（含基准对比差值）、康复/死亡/危急累计耗时、四维净治疗量、峰值器官损伤、药理风险警报（含过敏触发统计） |
 | [src/components/TimelineCharts.tsx](file:///home/yahvk/ss13-chem-sim/src/components/TimelineCharts.tsx) | 原生 SVG 多图联动看板（生命值+五维伤势演化、血液实线/胃部虚线浓度曲线、器官损伤%/体温血量切换）、倍速回放与时间轴拖拽 |
 | [src/components/TickInspector.tsx](file:///home/yahvk/ss13-chem-sim/src/components/TickInspector.tsx) | 选中 Tick 的生理切片检视（HP 进度条、血量/体表温/核心温/伤口计数、7 器官状态条、`TRAIT_LABELS`、过敏发作/阻断状态、血液/胃内/缓释余量） |
@@ -131,7 +134,8 @@
 
 ### 3.6 制药容器、机器与成品获取（上游检索缓存）
 
-- [patch.dm](file:///home/yahvk/Tianguan13/code/modules/reagents/reagent_containers/patch.dm)：`/obj/item/reagent_containers/applicator/patch`（上限 `40u`）默认挂载 `/datum/embedding/med_patch`（`transfer_per_second = 0.75`，每 tick 缓释 `0.75u`，静滞暂停）；全库唯一绑定 `/datum/embedding/med_patch/instant` 即时一次性释放全部药量的物品是预制 `patch/synthflesh`（`20u` 100% 纯度合成肉）。
+- [patch.dm](file:///home/yahvk/Tianguan13/code/modules/reagents/reagent_containers/patch.dm)：`/obj/item/reagent_containers/applicator/patch`（上限 `40u`）默认挂载 `/datum/embedding/med_patch`（`transfer_per_second = 0.75`，每 tick `trans_to(owner, 0.75, PATCH)` 按容器内各组分含量比例同时缓释总计 `0.75u`，静滞暂停）；全库唯一绑定 `/datum/embedding/med_patch/instant` 即时一次性释放全部药量的物品是预制 `patch/synthflesh`（`20u` 100% 纯度合成肉）。
+- [pill.dm](file:///home/yahvk/Tianguan13/code/modules/reagents/reagent_containers/pill.dm)：`/obj/item/reagent_containers/applicator/pill` 单颗上限 `volume = 50`（`50u`），口服进入胃部消化。
 - [code/_globalvars/lists/reagents.dm](file:///home/yahvk/Tianguan13/code/_globalvars/lists/reagents.dm)：`GLOB.reagent_containers[CAT_PATCHES]` 仅包含 `/obj/item/reagent_containers/applicator/patch/style`（全部继承缓释基类），ChemMaster 与压药机均不能打印任意药物的即时贴片。
 - [chem_master.dm](file:///home/yahvk/Tianguan13/code/modules/reagents/chemistry/machinery/chem_master.dm)：`ChemMaster 3000` 可将缓冲区药液分装打印为 `CAT_PATCHES`（缓释贴片）以及药丸、药瓶、针管等容器。
 - [pill_press.dm](file:///home/yahvk/Tianguan13/code/modules/plumbing/plumbers/pill_press.dm)：`Chemical Press`（`/obj/machinery/plumbing/pill_press`）接入化学管道后，可设置单份容量并在 `CAT_PATCHES` 类别下自动批量压制缓释贴片。
@@ -157,8 +161,8 @@
 
 ### 4.1 12 步 Tick 主循环（`dt = 2s`，见 [simulator.ts](file:///home/yahvk/ss13-chem-sim/src/engine/simulator.ts) 中 `runSimulation`）
 
-1. **计划给药投递**：在 `startTime <= time` 时按方式入体（`PATCH` 推入 `activeTransfers` 每 tick 释放 `0.75u`；`IV_DRIP` 按 `ivRate` 滴注；`INJECT / INGEST / TOUCH / VAPOR` 即时投递，其中 `INGEST` 进入胃部，接触/蒸气按防护率换算吸收）并运行体内反应。
-   1b. **活跃缓释处理**：`PATCH` 在静滞模式下暂停；`IV_DRIP` 不受静滞暂停；余量 `< 0.01u` 移除。
+1. **计划给药投递**：在 `startTime <= time` 时按方式入体（同 `patchGroup` 的复合贴片合入单个 `activeTransfers` 条目，连同独立 `PATCH` 共以每 tick `0.75u` 速率入血；`IV_DRIP` 按 `ivRate` 滴注；`INJECT / INGEST / TOUCH / VAPOR` 即时投递，其中 `INGEST` 进入胃部，接触/蒸气按防护率换算吸收）并运行体内反应。
+   1b. **活跃缓释处理**：复合贴片按各组分当前余量比例分摊本 tick `0.75u` 释放总量后再运行体内反应；`PATCH` 在静滞模式下暂停；`IV_DRIP` 不受静滞暂停；余量 `< 0.01u` 移除。
 2. **胃部排空至血液**（非静滞、未死亡、胃未衰竭时）：
    `amount = min((roundStep(0.05 * stomachVol, 0.05) + max(metabRate, 0.25)) * dt, stomachVol)`
    转入血液并立即触发体内化学反应（注意胃转血以 `creationPurity` 且 `isLivingHolder = false` 加入血液）。
@@ -188,9 +192,7 @@
 
 ---
 
-## 5. 内置试剂总览与预设场景
-
-### 5.1 内置试剂清单（见 [reagents.ts](file:///home/yahvk/ss13-chem-sim/src/engine/reagents.ts)）
+## 5. 内置试剂总览（见 [reagents.ts](file:///home/yahvk/ss13-chem-sim/src/engine/reagents.ts)）
 
 - **`c2` 核心治疗**：`libital(利比特)`, `helbital(赫比妥)`, `probital(益生泰尔)`, `aiuri(艾尤里)`, `lenturi(伦图里)`, `hercuri(赫丘利)`, `granibitaluri(格兰尼比塔卢里)`, `synthflesh(合成肉)`, `multiver(多功能解毒剂)`, `seiver(赛维尔)`, `syriniver(木泰尔)`, `musiver(穆西弗)`, `tirimol(特里莫尔)`, `convermol(肯尔莫)`, `penthrite(彭斯莱特)`
 - **`superior` 高级治疗**：`sal_acid(水杨酸)`, `oxandrolone(奥沙雄龙)`, `salbutamol(沙丁胺醇)`, `albuterol(沙丁胺醇（吸入型）)`, `regen_jelly(再生果冻)`, `pen_acid(喷替酸)`, `atropine(阿托品)`, `calomel(甘汞)`, `ammoniated_mercury(氨化汞)`, `cryoxadone(冰晶沙酮)`, `pyroxadone(吡洛沙酮)`, `rezadone(瑞扎酮)`
@@ -199,26 +201,13 @@
 - **`inverse` 逆试剂 / 杂质**：`libitoil(力比多油)`, `helgrasp(赫尔之握)`, `aivime(艾维姆)`, `lentslurri(伦茨卢里)`, `herignis(赫里格尼斯)`, `monover(莫诺维尔)`, `technetium(锝99)`, `super_melatonin(超级褪黑素)`, `coveroli(可维罗利)`, `nooartrium(努阿特姆)`, `benzoic_acid(苯甲酸)`, `oxymetholone(羟甲烯龙)`, `bamethan(巴美坦)`, `pendetide(彭德泰德)`, `hyoscyamine(莨菪碱)`, `ammoniated_sludge(氨化污泥)`, `inreziniver(因雷齐尼韦)`, `neruwhine(内鲁瓦因)`, `corazargh(科拉扎尔格)`, `oculater(奥库莱特)`, `tinacusiate(蒂纳库西亚特)`, `prohol(普罗霍尔)`, `lidopaine(利多巴因)`, `sepsisillin(败血西林)`, `probital_failed(代谢抑制因子)`, `peptides_failed(朊病毒肽)`, `toxic_monomers(有毒单体)`
 - **`helper` 对照毒素 / 食物 / 溶剂**：`nutriment(营养物)`, `peptides(肽)`, `toxin(毒素)`, `amatoxin(鹅膏毒肽)`, `anacea(安纳西)`, `lexorin(莱克索林)`, `histamine(组胺)`, `mindbreaker(碎心者毒素)`, `ethanol(乙醇)`, `sugar(糖)`, `water(水)`
 
-### 5.2 预设场景索引（见 [presets.ts](file:///home/yahvk/ss13-chem-sim/src/engine/presets.ts)）
-
-1. `c2-combo`：常规创伤复合急救（利比特 + 伦图里 + 多功能解毒剂）
-2. `superior-combo`：高阶重伤无副伤配方（水杨酸 + 奥沙雄龙 + 格兰尼比塔卢里）
-3. `syriniver-iv`：木泰尔 20% 稀释静脉滴注抢救重度中毒
-4. `probital-peptides`：益生泰尔口服 + 营养物催化治疗肽
-5. `hardcrit-rescue`：濒死重危抢救（赫比妥 + 阿托品 + 沙丁胺醇）
-6. `penthrite-boom`：禁忌混药演示（彭斯莱特 + 肾上腺素体内爆炸）
-7. `cryo-pod`：低温冷冻仓全伤与重度伤口愈合（冰晶沙酮）
-8. `fire-pyrox`：火场高温抢救（吡洛沙酮 + 赫丘利蒸气灭火）
-9. `inverse-disaster`：低纯度逆反应灾难（25% 利比特 + 20% 特里莫尔）
-10. `anacea-purge`：毒素清除对抗（安纳西瘫痪多功能解毒 vs 喷替酸）
-
 ---
 
 ## 6. 扩展指引、已知坑点与设计决策
 
 - **新增一种试剂**：先在对应上游 `.dm` 文件与 [glossary.zh-Hans.json](file:///home/yahvk/Tianguan13/tools/i18n/mt/glossary.zh-Hans.json) 中核对参数与译名，然后在 [src/engine/reagents.ts](file:///home/yahvk/ss13-chem-sim/src/engine/reagents.ts) 中追加 `ReagentDef`；若含低纯度逆产物，需同步添加 `inverse` 类别条目并设定 `inverseChemVal` / `inverseChemId`。新增后界面上的药理选择器（`REAGENT_LIST`）、图鉴和颜色映射会自动生效。
 - **新增体内即时反应**：编辑 [src/engine/reactions.ts](file:///home/yahvk/ss13-chem-sim/src/engine/reactions.ts) 的 `runInBodyReactions(ctx)`；如果是危险爆炸/毒性反应，调用 `ctx.addEvent('danger', 'reaction', ...)` 即可被 [SummaryStrip.tsx](file:///home/yahvk/ss13-chem-sim/src/components/SummaryStrip.tsx) 的 KPI 警报卡自动统计。
-- **坑点 1（`deadProcess` 与初始 `DEAD` 状态）**：缺乏 `REAGENT_DEAD_PROCESS` 的药物（如 `cryoxadone` 冰晶沙酮）在 `stat === 'DEAD'`（HP <= -100）时**不会代谢**。设置冷冻抢救预设时初始总伤害须小于 `200`（如 `cryo-pod` 调整为 `45/45/30/30`，HP `-50` 重危活体），否则冷冻舱不会触发治疗与伤口计数推进。
+- **坑点 1（`deadProcess` 与初始 `DEAD` 状态）**：缺乏 `REAGENT_DEAD_PROCESS` 的药物（如 `cryoxadone` 冰晶沙酮）在 `stat === 'DEAD'`（HP <= -100）时**不会代谢**。测试低温急救时初始总伤害需小于 `200`（保证处于活体危重状态），否则冷冻舱不会触发治疗与伤口计数推进。
 - **坑点 2（有益反应 vs 危险反应警报区分）**：`SimSummary` 中用 `triggeredDangerReactions`（仅统计 `severity === 'danger'` 且 `category === 'reaction'`）与 `triggeredReactions` 区分，避免把益生泰尔催化生成治疗肽等正常生理转换误判为风险警报，同时确保彭斯莱特爆炸在 KPI 第 5 卡明确标红。
 - **坑点 3（1280px 桌面视口三栏与状态胶囊）**：`src/styles/index.css` 中三栏采用 `320px minmax(420px, 1fr) 320px` 且媒体查询断点设在 `@media (max-width: 1180px)`，保证带纵向滚动条的 `1280×800` 浏览器不会意外把右栏挤到底部；`.stat-badge` 必须保留 `white-space: nowrap; flex-shrink: 0;` 防止中文徽章跨行截断。
 - **坑点 4（严格 TS 编译约束）**：[tsconfig.json](file:///home/yahvk/ss13-chem-sim/tsconfig.json) 开启了 `noUnusedLocals` 与 `noUnusedParameters`，未使用的参数（如 `overdoseProcess` 中的 `dt`）必须前缀 `_`。
@@ -228,20 +217,19 @@
 
 ## 7. 开发日志（Devlog）
 
-### 2026-11-23 — 初版交付与全流程核验
-- **引擎构建**：对照 `~/Tianguan13` 实现 12 步 Tick 仿真引擎、体内即时反应（彭斯莱特爆炸、益生泰尔催化治疗肽）、肝脏毒素耐受与器官衰竭机制，并录入首批核心医疗与杂质试剂。
+### 2026-11-23 — 迭代与核验记录
+- **引擎构建**：对照 `~/Tianguan13` 实现 12 步 Tick 仿真引擎、体内即时反应（彭斯莱特爆炸、益生泰尔催化治疗肽）、肝脏毒素耐受与器官衰竭机制，并录入核心医疗与杂质试剂。
 - **汉化对齐**：优先对齐 `glossary.zh-Hans.json`、`zh-Hans/tgui.json`、`zh-Hans/datum.json`、`health_scan_labels.json` 译名，并补充 TG13 Wiki 别名搜索。
-- **缺陷修复与打磨**：
-  1. 清理 `reagents.ts`、`simulator.ts` 的未使用引入及 `presets.ts` 中的重复 `organs` 键，使 `tsc --noEmit` 零报错通过；
-  2. 将 `cryo-pod` 预设初始伤势调整为重危活体（45/45/30/30，`-50HP`），使冷冻冰晶沙酮及重度伤口愈合测试通过；
-  3. 补充 `SimSummary.triggeredDangerReactions`、修正 `1180px` 三栏断点与状态徽章防折行。
-- **文档与规则落地**：新增 [DEV_INDEX.md](file:///home/yahvk/ss13-chem-sim/DEV_INDEX.md) 汇总上游源码/汉化路径、引擎公式与试剂目录，并写入工作区 [AGENTS.md](file:///home/yahvk/ss13-chem-sim/AGENTS.md) 约定后续对话先读后更、且禁止写入高易变数据。
+- **结构规范与文档落地**：新增 [DEV_INDEX.md](file:///home/yahvk/ss13-chem-sim/DEV_INDEX.md) 汇总上游源码/汉化路径、引擎公式与试剂目录，并写入工作区 [AGENTS.md](file:///home/yahvk/ss13-chem-sim/AGENTS.md)。
 - **验证基线（最新修改后均通过）**：
   - `bun run test`：全部测试用例通过
   - `bun run typecheck`：0 错误
   - `bun run build`：生产构建成功
-  - 浏览器实机（`1440×900` 与 `1280×800`）：控制台 0 报错，预设切换、加药搜索、SVG 图表交互与回放、事件日志跳转、药理图鉴及危险警报卡片均正常渲染。
+  - 浏览器实机（`1440×900` 与 `1280×800`）：控制台 0 报错，加药搜索、SVG 图表交互与回放、事件日志跳转、药理图鉴及危险警报卡片均正常渲染。
 - **贴片与上游缓存同步**：给药方式对齐 ChemMaster / 管道压药机行为（`PATCH` 速率 `0.75u/t`，合成肉默认 `TOUCH`），并补全贴片与制药机器的上游检索缓存至第 3.6 节。
 - **给药组合方案存档功能**：新增 [regimenStorage.ts](file:///home/yahvk/ss13-chem-sim/src/engine/regimenStorage.ts) 并扩展 [RegimenPanel.tsx](file:///home/yahvk/ss13-chem-sim/src/components/RegimenPanel.tsx)，支持仅针对给药组合（`DoseEvent[]`）的 `localStorage` 本地存档（命名/自动命名保存、替换加载、追加合并、同名或指定覆盖、删除）以及剪贴板/文件 JSON 导入导出。
 - **统一药品图鉴与选药库及特征筛选升级**：统一收敛全库 `targets` 为规范特征词表（`EFFECT_TRAITS` + `逆产物`），并在 [reagents.ts](file:///home/yahvk/ss13-chem-sim/src/engine/reagents.ts) 导出 `getReagentTraits` 自动派生机制安全特征（`治疗药物`、`无过量(无OD)`、`有过量(OD)`、`有逆反应`、`无肝可代`、`死后生效`、`毒素/有害`、`逆产物`）；顶栏「药品图鉴」、给药面板「添加药品」与药卡详参入口共用统一的 [HandbookModal.tsx](file:///home/yahvk/ss13-chem-sim/src/components/HandbookModal.tsx)，支持机制安全 + 作用特征多选交集筛选、逆产物直跳、代谢/OD 排序及 `+ 加入`（含「加入后关闭」开关与 `Esc` 关闭）。
-- **药物过敏模拟与图鉴「无过敏」特征**：依据 `allergic.dm`、`body.dm`、`carbon.dm` 与 `turf.dm` 完整实现「极端药物过敏」（肾上腺素阻断并暂停消耗、停药恢复爆发、6 毒/6u 组胺/t、呕吐清 3 毒排胃及 6 内脏池 1/6 损伤期望/随机判定）与「化学过敏」基因突变；患者面板新增「药物过敏与免疫异常」折叠区（支持按上游合规池随机抽 6 种与全库沙盒自选），给药方案、切片检视、KPI 警报与事件日志全面联动告警；图鉴与选药库 `MECHANISM_TRAITS` 与特性标签同步加入 `无过敏` 筛选，并将本轮 `/home/yahvk/Tianguan13` 新查路径缓存写回第 3.7 节。
+- **药物过敏模拟与图鉴「无过敏」特征**：依据 `allergic.dm`、`body.dm`、`carbon.dm` 与 `turf.dm` 完整实现「极端药物过敏」（肾上腺素阻断并暂停消耗、停药恢复爆发、6 毒/6u 组胺/t、呕吐清 3 毒排胃及 6 内脏池 1/6 损伤期望/随机判定）与「化学过敏」基因突变；患者面板新增「药物过敏与免疫异常」折叠区（支持按上游合规池随机抽 6 种与全库沙盒自选），给药方案、切片检视、KPI 警报与事件日志全面联动告警；图鉴与选药库 `MECHANISM_TRAITS` 与特性标签同步加入 `无过敏` 筛选，并将 `/home/yahvk/Tianguan13` 新查路径缓存写回第 3.7 节。
+- **场景 URL 分享/导入与纯文本配方导出**：应用默认以干净空白场景启动，新建 [scenarioShare.ts](file:///home/yahvk/ss13-chem-sim/src/engine/scenarioShare.ts) 与 [ScenarioShareModal.tsx](file:///home/yahvk/ss13-chem-sim/src/components/ScenarioShareModal.tsx) 实现 `#s=` Base64URL 差量短键场景分享、自动加载及导入重置；并在 [regimenStorage.ts](file:///home/yahvk/ss13-chem-sim/src/engine/regimenStorage.ts) 与 [RegimenPanel.tsx](file:///home/yahvk/ss13-chem-sim/src/components/RegimenPanel.tsx) 新增「导出纯文本配方」抽屉及存档卡片快捷复制按钮（支持多行清单与单行紧凑格式切换及 `.txt` 下载）。
+- **合并贴片仿真与菜谱式纯文本配方导出**：在 [constants.ts](file:///home/yahvk/ss13-chem-sim/src/engine/constants.ts)、[types.ts](file:///home/yahvk/ss13-chem-sim/src/engine/types.ts)、[simulator.ts](file:///home/yahvk/ss13-chem-sim/src/engine/simulator.ts)、[scenarioShare.ts](file:///home/yahvk/ss13-chem-sim/src/engine/scenarioShare.ts) 与 [RegimenPanel.tsx](file:///home/yahvk/ss13-chem-sim/src/components/RegimenPanel.tsx) 实现 `patchGroup` 合并贴片（同一贴片 ≤40u、避开彭斯莱特禁忌组合、按比例共享 `0.75u/tick` 释放及一键自动合片/分摊速率显示）；重构 `formatRegimenPlainText` 为直接面向容器配制与施药步骤的菜谱结构，自动合并同时间贴片（≤40u）与口服药丸（≤50u），单步骤省略时间并补全 [pill.dm](file:///home/yahvk/Tianguan13/code/modules/reagents/reagent_containers/pill.dm) 上游缓存至第 3.6 节。
+- **文档与开源协议**：新增 [README.md](file:///home/yahvk/ss13-chem-sim/README.md) 并从 `/usr/share/licenses/spdx/AGPL-3.0-or-later.txt` 复制生成 [LICENSE](file:///home/yahvk/ss13-chem-sim/LICENSE)。

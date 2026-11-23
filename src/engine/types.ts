@@ -4,7 +4,6 @@ export type DeliveryMethod =
   | 'INJECT'
   | 'INGEST'
   | 'PATCH'
-  | 'PATCH_INSTANT'
   | 'TOUCH'
   | 'VAPOR'
   | 'IV_DRIP';

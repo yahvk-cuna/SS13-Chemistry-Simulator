@@ -23,8 +23,7 @@ const QUICK_ADD_IDS = [
 const DELIVERY_OPTIONS: { value: DeliveryMethod; label: string }[] = [
   { value: 'INJECT', label: '注射 (INJECT)' },
   { value: 'INGEST', label: '口服/药丸 (INGEST)' },
-  { value: 'PATCH', label: '缓释贴片 (PATCH 0.75u/t)' },
-  { value: 'PATCH_INSTANT', label: '即时贴片 (PATCH_INSTANT)' },
+  { value: 'PATCH', label: '贴片 (PATCH 0.75u/t)' },
   { value: 'IV_DRIP', label: '静脉滴注 (IV_DRIP)' },
   { value: 'TOUCH', label: '接触泼洒 (TOUCH)' },
   { value: 'VAPOR', label: '蒸气喷洒 (VAPOR)' },
@@ -35,7 +34,7 @@ export function RegimenPanel({ doses, onChange }: RegimenPanelProps) {
 
   const addReagent = (def: ReagentDef) => {
     const defaultMethod: DeliveryMethod =
-      def.id === 'synthflesh' ? 'PATCH_INSTANT' : def.id === 'probital' ? 'INGEST' : 'INJECT';
+      def.id === 'synthflesh' ? 'TOUCH' : def.id === 'probital' ? 'INGEST' : 'INJECT';
     const next: DoseEvent = {
       id: `dose-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       reagentId: def.id,

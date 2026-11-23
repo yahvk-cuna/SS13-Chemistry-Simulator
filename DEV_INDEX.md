@@ -9,13 +9,13 @@
 - **项目目录**：`/home/yahvk/ss13-chem-sim`
 - **上游源码仓库**：`/home/yahvk/Tianguan13`（当前基准提交：`2f7bad2d63227592124b7f891151e8af3d9d9bb0`）
 - **在线 Wiki 参考**：TG13 中文 Wiki 药物章节（`https://tgwiki.spacestation14cn.com/index.php?title=Guide_to_chemistry#%E8%8D%AF%E7%89%A9_2`）
-- **技术栈**：React 19 + TypeScript（strict 模式）+ Vite + Vitest + `lucide-react` + 原生 SVG 交互图表与 CSS 变量样式表
-- **包脚本（[package.json](file:///home/yahvk/ss13-chem-sim/package.json)）**：
-  - `npm run dev`：启动 Vite 本地开发服务器
-  - `npm run test`（或 `npx vitest run`）：运行 Vitest 单元测试（Node 环境，不依赖浏览器）
-  - `npm run typecheck`（或 `npx tsc --noEmit`）：全量 TypeScript 类型检查（启用了 `strict`、`noUnusedLocals`、`noUnusedParameters`）
-  - `npm run build`（`tsc -b && vite build`）：类型构建检查并生成生产包至 `dist/`
-  - `npm run preview`：预览生产构建产物
+- **技术栈**：Bun + React 19 + TypeScript（strict 模式）+ Vite + Vitest + `lucide-react` + 原生 SVG 交互图表与 CSS 变量样式表
+- **包脚本（[package.json](file:///home/yahvk/ss13-chem-sim/package.json)，统一使用 `bun`）**：
+  - `bun run dev`：启动 Vite 本地开发服务器
+  - `bun run test`（执行 `vitest run`）：运行 Vitest 单元测试（Node 环境，不依赖浏览器）
+  - `bun run typecheck`（执行 `tsc --noEmit`）：全量 TypeScript 类型检查（启用了 `strict`、`noUnusedLocals`、`noUnusedParameters`）
+  - `bun run build`（执行 `tsc -b && vite build`）：类型构建检查并生成生产包至 `dist/`
+  - `bun run preview`：预览生产构建产物
 
 > **宿主机执行环境备注**：在本工作区运行命令时，标准沙盒可能因 `.envrc` 路径校验返回 `sandbox configuration error: deny .envrc: non-absolute file path.`，遇到该提示时改用无沙盒模式执行单个命令即可。
 
@@ -129,13 +129,22 @@
   - `Granibitaluri` → `格兰尼比塔卢里`、`Neurine` → `神经碱`、`Nanotrasen` → `纳米传讯`、`Stasis` → `静滞`
   - 器官健康扫描状态（来自 `health_scan_labels.json`）：`正常` / `轻微损伤` / `严重损伤` / `无功能`
 
+### 3.6 制药容器、机器与成品获取（上游检索缓存）
+
+- [patch.dm](file:///home/yahvk/Tianguan13/code/modules/reagents/reagent_containers/patch.dm)：`/obj/item/reagent_containers/applicator/patch`（上限 `40u`）默认挂载 `/datum/embedding/med_patch`（`transfer_per_second = 0.75`，每 tick 缓释 `0.75u`，静滞暂停）；全库唯一绑定 `/datum/embedding/med_patch/instant` 即时一次性释放全部药量的物品是预制 `patch/synthflesh`（`20u` 100% 纯度合成肉）。
+- [code/_globalvars/lists/reagents.dm](file:///home/yahvk/Tianguan13/code/_globalvars/lists/reagents.dm)：`GLOB.reagent_containers[CAT_PATCHES]` 仅包含 `/obj/item/reagent_containers/applicator/patch/style`（全部继承缓释基类），ChemMaster 与压药机均不能打印任意药物的即时贴片。
+- [chem_master.dm](file:///home/yahvk/Tianguan13/code/modules/reagents/chemistry/machinery/chem_master.dm)：`ChemMaster 3000` 可将缓冲区药液分装打印为 `CAT_PATCHES`（缓释贴片）以及药丸、药瓶、针管等容器。
+- [pill_press.dm](file:///home/yahvk/Tianguan13/code/modules/plumbing/plumbers/pill_press.dm)：`Chemical Press`（`/obj/machinery/plumbing/pill_press`）接入化学管道后，可设置单份容量并在 `CAT_PATCHES` 类别下自动批量压制缓释贴片。
+- [medkit.dm](file:///home/yahvk/Tianguan13/code/game/objects/items/storage/medkit.dm) & [medical.dm](file:///home/yahvk/Tianguan13/code/modules/vending/medical.dm)：`/obj/item/storage/medkit/advanced`（高级急救箱，含 `3` 张预制合成肉即时贴片）可在 `NanoMed Plus` 的 `premium` 栏位购买。
+- [lizard_gas.dm](file:///home/yahvk/Tianguan13/modular_zubbers/code/game/machinery/lizard_gas.dm) & [deforest_brand_bioregen_designs.dm](file:///home/yahvk/Tianguan13/modular_zubbers/code/modules/research/designs/deforest_brand_bioregen_designs.dm)：`DeForest Brand Bio-Regenerator`（`/obj/machinery/biogenerator/lizard_gas_medvendor`）可消耗 `500 biomass` 打印预制 `patch/synthflesh`。
+
 ---
 
 ## 4. 仿真引擎关键规则与公式速查
 
 ### 4.1 12 步 Tick 主循环（`dt = 2s`，见 [simulator.ts](file:///home/yahvk/ss13-chem-sim/src/engine/simulator.ts) 中 `runSimulation`）
 
-1. **计划给药投递**：在 `startTime <= time` 时按方式入体（`PATCH` 推入 `activeTransfers` 每 tick 释放 `0.75u`；`IV_DRIP` 按 `ivRate` 滴注；`INJECT / INGEST / PATCH_INSTANT / TOUCH / VAPOR` 即时投递，其中 `INGEST` 进入胃部，接触/蒸气按防护率换算吸收）并运行体内反应。
+1. **计划给药投递**：在 `startTime <= time` 时按方式入体（`PATCH` 推入 `activeTransfers` 每 tick 释放 `0.75u`；`IV_DRIP` 按 `ivRate` 滴注；`INJECT / INGEST / TOUCH / VAPOR` 即时投递，其中 `INGEST` 进入胃部，接触/蒸气按防护率换算吸收）并运行体内反应。
    1b. **活跃缓释处理**：`PATCH` 在静滞模式下暂停；`IV_DRIP` 不受静滞暂停；余量 `< 0.01u` 移除。
 2. **胃部排空至血液**（非静滞、未死亡、胃未衰竭时）：
    `amount = min((roundStep(0.05 * stomachVol, 0.05) + max(metabRate, 0.25)) * dt, stomachVol)`
@@ -213,7 +222,8 @@
   3. 补充 `SimSummary.triggeredDangerReactions`、修正 `1180px` 三栏断点与状态徽章防折行。
 - **文档与规则落地**：新增 [DEV_INDEX.md](file:///home/yahvk/ss13-chem-sim/DEV_INDEX.md) 汇总上游源码/汉化路径、引擎公式与试剂目录，并写入工作区 [AGENTS.md](file:///home/yahvk/ss13-chem-sim/AGENTS.md) 约定后续对话先读后更、且禁止写入高易变数据。
 - **验证基线（最新修改后均通过）**：
-  - `npx vitest run`：全部测试用例通过
-  - `npx tsc --noEmit`：0 错误
-  - `npm run build`：生产构建成功
+  - `bun run test`：全部测试用例通过
+  - `bun run typecheck`：0 错误
+  - `bun run build`：生产构建成功
   - 浏览器实机（`1440×900` 与 `1280×800`）：控制台 0 报错，预设切换、加药搜索、SVG 图表交互与回放、事件日志跳转、药理图鉴及危险警报卡片均正常渲染。
+- **贴片与上游缓存同步**：给药方式对齐 ChemMaster / 管道压药机行为（`PATCH` 速率 `0.75u/t`，合成肉默认 `TOUCH`），并补全贴片与制药机器的上游检索缓存至第 3.6 节。

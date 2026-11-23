@@ -505,10 +505,9 @@ export function runSimulation(
     const def = REAGENTS[reagentId];
     if (!def || volume <= 0) return;
 
-    if (method === 'INJECT' || method === 'IV_DRIP' || method === 'PATCH_INSTANT') {
-      const m = method === 'PATCH_INSTANT' ? 'PATCH' : 'INJECT';
+    if (method === 'INJECT' || method === 'IV_DRIP') {
       addToHolder(state.blood, reagentId, volume, purity, temp, true, true);
-      def.exposeMob?.(ctx, m, volume, purity, temp, state.touchProtection);
+      def.exposeMob?.(ctx, 'INJECT', volume, purity, temp, state.touchProtection);
       runInBodyReactions(ctx);
       return;
     }
@@ -620,7 +619,6 @@ export function runSimulation(
         const methodName: Record<string, string> = {
           INJECT: '注射',
           INGEST: '口服',
-          PATCH_INSTANT: '即时贴片',
           TOUCH: '接触泼洒',
           VAPOR: '蒸气喷洒',
         };

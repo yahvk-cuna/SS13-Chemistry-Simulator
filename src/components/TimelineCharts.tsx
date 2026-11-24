@@ -131,11 +131,8 @@ export function TimelineCharts({
       for (const r of s.bloodReagents) m = Math.max(m, r.volume);
       for (const r of s.stomachReagents) m = Math.max(m, r.volume);
     }
-    if (hoveredReagent && REAGENTS[hoveredReagent]?.overdoseThreshold) {
-      m = Math.max(m, REAGENTS[hoveredReagent].overdoseThreshold * 1.15);
-    }
     return Math.ceil(m / 5) * 5;
-  }, [snapshots, hoveredReagent]);
+  }, [snapshots]);
 
   const y2Of = (v: number) => PAD_T + ((maxReagentVol - v) / maxReagentVol) * P2_H;
 
@@ -429,27 +426,32 @@ export function TimelineCharts({
             ))}
 
             {/* Hover OD threshold reference line */}
-            {hoveredReagent && REAGENTS[hoveredReagent]?.overdoseThreshold > 0 && (
-              <g>
-                <line
-                  x1={PAD_L}
-                  x2={W - PAD_R}
-                  y1={y2Of(REAGENTS[hoveredReagent].overdoseThreshold)}
-                  y2={y2Of(REAGENTS[hoveredReagent].overdoseThreshold)}
-                  stroke="#ef4444"
-                  strokeDasharray="4 3"
-                />
-                <text
-                  x={W - PAD_R - 4}
-                  y={y2Of(REAGENTS[hoveredReagent].overdoseThreshold) - 4}
-                  textAnchor="end"
-                  fontSize="10"
-                  fill="#fca5a5"
-                >
-                  {REAGENTS[hoveredReagent].zhName} 基础OD: {REAGENTS[hoveredReagent].overdoseThreshold}u
-                </text>
-              </g>
-            )}
+            {hoveredReagent &&
+              REAGENTS[hoveredReagent]?.overdoseThreshold > 0 &&
+              (() => {
+                const def = REAGENTS[hoveredReagent];
+                const od = def.overdoseThreshold;
+                const aboveRange = od > maxReagentVol;
+                const lineY = aboveRange ? PAD_T : y2Of(od);
+                const labelY = aboveRange ? PAD_T + 12 : lineY - 4 < PAD_T + 10 ? lineY + 12 : lineY - 4;
+                return (
+                  <g>
+                    <line
+                      x1={PAD_L}
+                      x2={W - PAD_R}
+                      y1={lineY}
+                      y2={lineY}
+                      stroke={aboveRange ? 'rgba(239,68,68,0.55)' : '#ef4444'}
+                      strokeDasharray="4 3"
+                    />
+                    <text x={W - PAD_R - 4} y={labelY} textAnchor="end" fontSize="10" fill="#fca5a5">
+                      {aboveRange
+                        ? `↑ ${def.zhName} 基础OD: ${od}u（高于当前坐标上限）`
+                        : `${def.zhName} 基础OD: ${od}u`}
+                    </text>
+                  </g>
+                );
+              })()}
 
             {allReagentIds.map((id) => {
               const def = REAGENTS[id];

@@ -23,6 +23,7 @@ import {
   getDisplayColor,
   isChemicalAllergyTrigger,
   isNoAllergyReagent,
+  isPurityIndependentEffect,
 } from '../engine/reagents';
 import {
   type PlainTextRecipeFormat,
@@ -1326,6 +1327,7 @@ export function RegimenPanel({
 
           <div className="quick-chips">
             {isNoAllergyReagent(hoveredInfo.def) && <span className="tag-chip good">无过敏</span>}
+            {isPurityIndependentEffect(hoveredInfo.def) && <span className="tag-chip">纯度无关效果</span>}
             {patientAllergySet.has(hoveredInfo.def.id) && <span className="tag-chip danger">患者过敏原</span>}
             {hasChemicalAllergy && isChemicalAllergyTrigger(hoveredInfo.def) && (
               <span className="tag-chip warn">触发化学过敏</span>

@@ -164,7 +164,7 @@ function makeSimpleToxin(opts: {
     reverseMetabolism: false,
     penetratesSkin: 'VAPOR',
     summaryZh: opts.summaryZh,
-    mechanicsNoteZh: opts.mechanicsNoteZh,
+    mechanicsNoteZh: `${opts.mechanicsNoteZh}${!opts.mechanicsNoteZh || /[。！？!?]$/.test(opts.mechanicsNoteZh.trim()) ? '' : '；'}纯度影响：毒素伤害按纯度线性缩放。`,
     onMobLife: (ctx, inst, ratio, dt) => {
       if (opts.toxpwr && ctx.state.health > -100) {
         const dmg =
@@ -198,7 +198,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '核心钝伤治疗剂。每 tick 治疗 3 点钝伤（满纯度 4 点），造成 0.3 点肝脏损伤。',
-    mechanicsNoteZh: 'rate=0.2u/tick，默认纯度75%，无过量阈值；纯度<30%转化为力比多油。',
+    mechanicsNoteZh: '默认纯度75%，无过量阈值；纯度影响：钝伤治疗按 纯度/75% 缩放（满纯×1.33），伤肝固定不变。',
     onMobLife(ctx, inst, ratio, dt) {
       ctx.adjustOrganDamage('liver', 0.3 * ratio * dt, undefined, true);
       ctx.state.brute = Math.max(0, ctx.state.brute - 3 * normP(inst, this) * ratio * dt);
@@ -222,7 +222,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     penetratesSkin: 'VAPOR',
     summaryZh: '伤害越高治疗钝伤越快（总伤/20~总伤/10）。非重危状态会造成窒息副作用；过量 35u 施加死灵灼烧诅咒。',
     mechanicsNoteZh:
-      'rate=0.2u/tick，过量35u(满纯度46.67u)，纯度<30%转化为赫尔之握；连续代谢>=50周期结束时获得厄运预兆。',
+      '纯度影响：钝伤治疗按 纯度/75% 缩放，过量阈值随纯度缩放（默认35u/满纯43.75u），窒息副伤固定；连续代谢>=50周期结束时获得厄运预兆。',
     onMobLife(ctx, inst, ratio, dt) {
       const deathIsComing =
         (ctx.state.tox + ctx.state.oxy + ctx.state.burn + ctx.state.brute) * normP(inst, this);
@@ -272,7 +272,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '每 tick 治疗 3 点钝伤（满纯度 4 点）但消耗耐力。口服时还会产生有丝分裂素代谢因子，将食物转为治疗肽。',
-    mechanicsNoteZh: 'rate=0.2u/tick，过量20u（满纯度26.67u），纯度<50%直接转化有丝分裂素代谢因子。',
+    mechanicsNoteZh: '纯度影响：钝伤治疗按 纯度/75% 缩放（满纯×1.33），过量阈值随纯度缩放（默认20u/满纯25u），耐力消耗固定。',
     exposeMob(ctx, method, volume, purity, temp) {
       if (method !== 'INGEST') return;
       // Removes 5% probital and adds 25% metafactor directly to bloodstream
@@ -328,7 +328,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '核心烧伤药。每 tick 治疗 2 点烧伤（满纯度 2.67 点），造成 0.25 点眼部损伤。',
-    mechanicsNoteZh: 'rate=0.2u/tick，无过量阈值；纯度<35%转化为艾维姆（视力模糊）。',
+    mechanicsNoteZh: '无过量阈值；纯度影响：烧伤治疗按 纯度/75% 缩放（满纯×1.33），伤眼固定不变。',
     onMobLife(ctx, inst, ratio, dt) {
       ctx.state.burn = Math.max(0, ctx.state.burn - 2 * normP(inst, this) * ratio * dt);
       ctx.adjustOrganDamage('eyes', 0.25 * ratio * dt, undefined, true);
@@ -351,7 +351,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '高效烧伤药。每 tick 治疗 3.75 点烧伤（满纯度 5 点），造成 0.4 点胃部损伤。',
-    mechanicsNoteZh: 'Tianguan13源码 inverse_chem_val=0.4（40%以下转化为伦茨卢里，wiki 旧写为25%）。',
+    mechanicsNoteZh: '纯度影响：烧伤治疗按 纯度/75% 缩放（满纯×1.33），伤胃固定不变。',
     onMobLife(ctx, inst, ratio, dt) {
       ctx.state.burn = Math.max(0, ctx.state.burn - 3.75 * ratio * normP(inst, this) * dt);
       ctx.adjustOrganDamage('stomach', 0.4 * ratio * dt, undefined, true);
@@ -374,7 +374,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '强力退烧灭火烧伤药。烧伤>50时每 tick 治 3 点，否则治 2.25 点；并强力降低体温与火层。',
-    mechanicsNoteZh: 'rate=0.2u/tick，过量25u大幅加重降温（可能失温冻伤）；蒸气(VAPOR)喷洒可瞬间扑灭火焰。',
+    mechanicsNoteZh: '蒸气(VAPOR)喷洒可瞬间扑灭火焰；纯度影响：烧伤治疗按 纯度/75% 缩放（满纯×1.33），过量阈值随纯度缩放（默认25u/满纯31.25u），降温固定。',
     exposeMob(ctx, method, volume) {
       if (method !== 'VAPOR') return;
       ctx.state.bodyTemp = Math.max(50, ctx.state.bodyTemp - volume * TEMPERATURE_DAMAGE_COEFFICIENT);
@@ -420,7 +420,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     penetratesSkin: 'VAPOR',
     metabolizedTraits: ['TRAIT_ANALGESIA'],
     summaryZh: '钝伤+烧伤双效止痛剂。轻伤时每 tick 各治 1.5 点，随总外伤递减至 0.5 点。',
-    mechanicsNoteZh: '无逆反应；过量 50u 每 tick 造成 0.2 肝脏损伤与 0.2 毒素（适合配合水杨酸/奥沙雄龙收尾）。',
+    mechanicsNoteZh: '过量 50u 每 tick 造成 0.2 肝脏损伤与 0.2 毒素（适合配合水杨酸/奥沙雄龙收尾）。',
     onMobLife(ctx, _inst, ratio, dt) {
       const healAmount = Math.max(
         1.5 - roundStep(0.01 * (ctx.state.brute + ctx.state.burn), 0.2),
@@ -450,7 +450,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '仅靠贴片/接触/蒸气瞬间生效！每 1u 立即治疗 1.25 钝伤与 1.25 烧伤，但产生治疗总量 50%~75% 的毒素。',
-    mechanicsNoteZh: '注射或口服无效；入血后无持续治疗效果。60~100u（且烧伤<=50）可使焦尸恢复正常形态。',
+    mechanicsNoteZh: '注射或口服无效；入血后无持续治疗效果。纯度影响：以伤换毒系数为 50%~75%（0.5+0.25×(1-纯度)），满纯度产毒最低(50%)，治疗量不随纯度缩放；60~100u（且烧伤<=50）可使焦尸恢复正常形态。',
     exposeMob(ctx, method, volume, purity, _temp, touchProtection) {
       if (method !== 'PATCH' && method !== 'TOUCH' && method !== 'VAPOR') return;
       const eff = 1 - touchProtection;
@@ -493,7 +493,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '体内药物种类越多解毒越快（最多+3/tick），每 tick 造成 0.5 肺伤并清除 3u 非药试剂；若>=3种药物则保留其他药物。',
-    mechanicsNoteZh: '满纯度100%时仅需+1种其他药物即可不清除药物（默认75%需+2种）；体内含安纳西时清除功能失效。',
+    mechanicsNoteZh: '纯度影响：解毒上限按 纯度/75% 缩放，满纯度(100%)时豁免清药所需其他药数额外减1（仅需+1种，默认75%需+2种）；体内含安纳西时清除功能失效。',
     onMobLife(ctx, inst, ratio, dt) {
       let medibonus = 0;
       for (const r of ctx.state.blood) {
@@ -532,7 +532,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '温度依赖型解毒剂：高温治普通毒素（上限1000K治5点/tick），超低温对受辐射者最高治 34 点/tick；每治5毒伤造成1心伤。',
-    mechanicsNoteZh: '低温辐射特效需药液温度<150K（50K必触发，50~150K概率判定一次）；纯度<45%转化为锝99。',
+    mechanicsNoteZh: '低温辐射特效需药液温度<150K（50K必触发，50~150K概率判定一次）；纯度影响：高温解毒与低温辐射解毒量均按 纯度/75% 缩放（满纯×1.33）。',
     onMobMetabolize(ctx, inst) {
       inst.data.radsHealThreshold = ctx.randRange(50, 150);
     },
@@ -577,7 +577,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '注射时立刻治 1.5x 毒素并按肝脏健康度转化为安全的穆西弗（最高80%~100%）。极易过量（阈值6u）。',
-    mechanicsNoteZh: 'rate=0.3u/tick；推荐20%稀释静脉滴注。代谢时每 tick 治 1 毒素、伤肝 0.8（0.54*ratio*dt）、清除 0.4u 试剂。',
+    mechanicsNoteZh: '推荐20%稀释静脉滴注。代谢时每 tick 治 1 毒素、伤肝 0.8（0.54*ratio*dt）、清除 0.4u 试剂。纯度影响：注射瞬时解毒量、穆西弗转化率（满纯最高100%）与过量阈值（默认6u/满纯7.5u）均随纯度缩放。',
     exposeMob(ctx, method, volume, purity, temp) {
       if (method !== 'INJECT') return;
       const nP = purity / REAGENT_STANDARD_PURITY;
@@ -623,7 +623,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '木泰尔注射后的代谢产物，肝毒仅为其1/8！每 tick 治 1.5 毒素并清除 0.2u 其他试剂。',
-    mechanicsNoteZh: 'rate=0.1u/tick，过量25u导致严重肝损、恶心与肌无力创伤。',
+    mechanicsNoteZh: '过量导致严重肝损、恶心与肌无力创伤；纯度影响：解毒量按 纯度/75% 缩放（满纯×1.33），过量阈值随纯度缩放（默认25u/满纯31.25u），伤肝固定。',
     onMobLife(ctx, inst, ratio, dt) {
       ctx.adjustOrganDamage('liver', 0.2 * ratio * dt, undefined, true);
       ctx.state.tox = Math.max(0, ctx.state.tox - 3 * normP(inst, this) * ratio * dt);
@@ -658,7 +658,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '应急窒息药，每 tick 治 4.5 窒息（满纯度6点）但造成 2 点耐力损耗，耗尽时若停留>21周期会强制入睡10秒。',
-    mechanicsNoteZh: 'rate=0.2u/tick；纯度<25%转化为超级褪黑素（睡后使所有药物纯度×1.25）。',
+    mechanicsNoteZh: '纯度影响：窒息治疗按 纯度/75% 缩放（满纯6点/t），耐力消耗固定。',
     onMobLife(ctx, inst, ratio, dt) {
       ctx.state.oxy = Math.max(0, ctx.state.oxy - 4.5 * ratio * dt * normP(inst, this));
       ctx.state.stamina = Math.min(120, ctx.state.stamina + 2 * ratio * dt);
@@ -694,7 +694,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '以 5:1 比率将窒息伤转化为毒素伤，治疗速度随体内停留周期数线性递增。',
-    mechanicsNoteZh: '过量 35u 时不仅按理论上限产生毒素，还会不断加速自身代谢至 1u/tick；Tianguan13源码逆阈值为 <50%（可维罗利）。',
+    mechanicsNoteZh: '过量时按理论上限产毒并加速自身代谢至 1u/tick；纯度影响：窒息治疗按 纯度/75% 缩放，过量阈值随纯度缩放（默认35u/满纯43.75u）。',
     onMobLife(ctx, inst, ratio, dt) {
       let oxycalc = 2.5 * ratio * (inst.currentCycle - 1);
       if (!inst.overdosed) {
@@ -728,7 +728,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     penetratesSkin: 'VAPOR',
     metabolizedTraits: ['TRAIT_STABLEHEART', 'TRAIT_NOHARDCRIT', 'TRAIT_NOSOFTCRIT', 'TRAIT_NOCRITDAMAGE'],
     summaryZh: '维持心跳阻止进入轻/重危（下限 -60HP，满纯度 -80HP），低于0HP时急速回血但损伤心脏；禁止与肾上腺素/阿托品混用！',
-    mechanicsNoteZh: '低于阈值(-60/-80)立刻清空自身并引发心脏骤停；与肾上腺素或阿托品1:1相遇瞬间体内爆炸！',
+    mechanicsNoteZh: '低于阈值(-60/-80)立刻清空自身并引发心脏骤停；与肾上腺素或阿托品1:1相遇瞬间体内爆炸！纯度影响：保命下限随纯度加深（满纯-80HP），过量阈值随纯度缩放（默认50u/满纯62.5u）。',
     onMobLife(ctx, inst, ratio, dt) {
       ctx.adjustOrganDamage('stomach', 0.25 * ratio * dt, undefined, true);
       const floorThresh = -30 * (2 * normP(inst, this));
@@ -784,7 +784,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '高阶重度钝伤药：钝伤>25时每 tick 治 4 点，<=25时每 tick 仅治 0.5 点，无器官副伤。',
-    mechanicsNoteZh: '过量 25u 且仍有钝伤时，每 tick 反向造成 4.5 点钝伤。',
+    mechanicsNoteZh: '过量且仍有钝伤时每 tick 反向造成 4.5 点钝伤；纯度影响：钝伤治疗与过量阈值（默认25u）均随纯度线性缩放（100%即为满效）。',
     onMobLife(ctx, inst, ratio, dt) {
       const rate = ctx.state.brute > 25 ? 4 : 0.5;
       ctx.state.brute = Math.max(0, ctx.state.brute - rate * ratio * dt * normP(inst, this));
@@ -813,7 +813,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '高阶重度烧伤药：烧伤>25时每 tick 治 4 点，<=25时每 tick 治 0.5 点，无器官副伤。',
-    mechanicsNoteZh: '过量 25u 且仍有烧伤时，每 tick 反向造成 4.5 点烧伤。',
+    mechanicsNoteZh: '过量且仍有烧伤时每 tick 反向造成 4.5 点烧伤；纯度影响：烧伤治疗与过量阈值（默认25u）均随纯度线性缩放（100%即为满效）。',
     onMobLife(ctx, inst, ratio, dt) {
       const rate = ctx.state.burn > 25 ? 4 : 0.5;
       ctx.state.burn = Math.max(0, ctx.state.burn - rate * ratio * dt * normP(inst, this));
@@ -840,7 +840,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     isMedicine: true,
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
-    summaryZh: '最强窒息急救药！代谢极慢（0.1u/tick），每 tick 治 3 点窒息并减少失去呼吸层数。',
+    summaryZh: '最强窒息急救药！代谢极慢，每 tick 治 3 点窒息并减少失去呼吸层数。',
     mechanicsNoteZh: '无过量阈值，无任何器官/毒素副作用。',
     onMobLife(ctx, _inst, ratio, dt) {
       ctx.state.oxy = Math.max(0, ctx.state.oxy - 6 * ratio * dt);
@@ -900,7 +900,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     isMedicine: true,
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
-    summaryZh: '每 tick 平衡治疗四项基础伤害各 1.5 点，无过量阈值与副作用（rate=0.4u/tick）。',
+    summaryZh: '每 tick 平衡治疗四项基础伤害各 1.5 点，无过量阈值与副作用。',
     mechanicsNoteZh: '四项各 -0.75 * ratio * dt = -1.5/tick（1.0x代谢）。',
     onMobLife(ctx, _inst, ratio, dt) {
       const heal = 0.75 * ratio * dt;
@@ -928,7 +928,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     penetratesSkin: 'VAPOR',
     metabolizedTraits: ['TRAIT_HALT_RADIATION_EFFECTS'],
     summaryZh: '每 tick 治疗 2 点毒素并清除 2u 所有其他试剂（含药物与毒素），同时免疫辐射伤害。',
-    mechanicsNoteZh: 'rate=0.2u/tick，无过量；能压制安纳西对药物的清除速率。纯度<40%转化为彭德泰德。',
+    mechanicsNoteZh: '能压制安纳西对药物的清除速率。',
     onMobLife(ctx, _inst, ratio, dt) {
       ctx.state.tox = Math.max(0, ctx.state.tox - 2 * ratio * dt);
       for (const r of [...ctx.state.blood]) {
@@ -956,7 +956,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     penetratesSkin: 'VAPOR',
     addedTraits: ['TRAIT_NOCRITDAMAGE', 'TRAIT_PREVENT_IMPLANT_AUTO_EXPLOSION'],
     summaryZh: '危急状态(HP<=0)每 tick 治 2 钝/烧/毒 + 5 窒息，并清除失呼吸防止濒死窒息。与彭斯莱特混用会爆炸！',
-    mechanicsNoteZh: 'rate=0.1u/tick，过量35u造成 0.5 毒素/tick 并持续眩晕颤抖。',
+    mechanicsNoteZh: '过量35u造成 0.5 毒素/tick 并持续眩晕颤抖。',
     onMobLife(ctx, _inst, ratio, dt) {
       if (ctx.state.health <= 0) {
         ctx.state.tox = Math.max(0, ctx.state.tox - 4 * ratio * dt);
@@ -993,7 +993,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '快速血液清除剂：每 tick 清除 3u 所有其他试剂，但生命>0时造成 (HP/40) 毒素；生命<0时反而治疗毒素。',
-    mechanicsNoteZh: 'rate=0.4u/tick；过量 20u 每 tick 额外造成 2.5 毒素并加快自身清除 2u/tick。',
+    mechanicsNoteZh: '过量 20u 每 tick 额外造成 2.5 毒素并加快自身清除 2u/tick。',
     onMobLife(ctx, _inst, ratio, dt) {
       for (const r of [...ctx.state.blood]) {
         if (r.id === 'calomel') continue;
@@ -1166,7 +1166,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     penetratesSkin: 'VAPOR',
     metabolizedTraits: ['TRAIT_TUMOR_SUPPRESSED'],
     summaryZh: '脑损伤特效药，每 tick 治疗 2 点大脑损伤（满纯度 2.67 点）；过量仅刷提示文本。',
-    mechanicsNoteZh: 'rate=0.4u/tick；纯度<45%转化为逆产物。',
+    mechanicsNoteZh: '纯度影响：脑伤治疗按 纯度/75% 缩放（满纯2.67点/t），过量阈值随纯度缩放（默认15u/满纯18.75u）。',
     onMobLife(ctx, inst, ratio, dt) {
       ctx.adjustOrganDamage('brain', -1 * ratio * dt * normP(inst, this), undefined, true);
     },
@@ -1192,7 +1192,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     penetratesSkin: 'VAPOR',
     addedTraits: ['TRAIT_ANTICONVULSANT'],
     summaryZh: '修复轻度脑创伤、清除神经毒素；100% 纯度时会记住初始脑伤并在消退时回溯；死亡状态每 tick 治 1 脑伤。',
-    mechanicsNoteZh: '自耗药（无肝亦可代谢）且对死者生效。纯度<50%转化为内鲁瓦因。',
+    mechanicsNoteZh: '自耗药（无肝亦可代谢）且对死者生效。纯度影响：清神经毒、治脑创伤与死后治脑伤按 纯度/75% 缩放，100%满纯解锁退药脑伤回溯。',
     onMobAdd(ctx, inst) {
       if (inst.creationPurity >= 1) {
         inst.data.initialBdamage = ctx.state.organs.brain.damage;
@@ -1232,7 +1232,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '立即移除基因突变与颤抖状态。',
-    mechanicsNoteZh: 'rate=0.4u/tick。',
+    mechanicsNoteZh: '',
     onMobLife(ctx) {
       ctx.state.jitter = 0;
     },
@@ -1254,7 +1254,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     penetratesSkin: 'VAPOR',
     metabolizedTraits: ['TRAIT_HALT_RADIATION_EFFECTS'],
     summaryZh: '免疫辐射引起的灼烧与毒素伤害；若患者受辐射，每 tick 额外治 1 点毒素。',
-    mechanicsNoteZh: '代谢极快（0.8u/tick）。',
+    mechanicsNoteZh: '代谢极快。',
     onMobLife(ctx, _inst, ratio, dt) {
       if (ctx.state.irradiated) {
         ctx.state.tox = Math.max(0, ctx.state.tox - 0.25 * ratio * dt);
@@ -1278,7 +1278,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '每 1u 临时等效稀释 +5u 血量（防大失血缺氧），每 tick 恢复 0.5u 血液，约 33% 概率治 0.5 钝/烧伤。',
-    mechanicsNoteZh: 'rate=0.2u/tick，过量阈值高达 60u；过量时 33% 概率反向造成 0.5 钝/烧伤。',
+    mechanicsNoteZh: '过量阈值高达 60u；过量时 33% 概率反向造成 0.5 钝/烧伤。',
     onMobLife(ctx, _inst, ratio, dt) {
       const p = ctx.chance(18);
       if (p > 0) {
@@ -1313,7 +1313,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     penetratesSkin: 'VAPOR',
     metabolizedTraits: ['TRAIT_BATON_RESISTANCE', 'TRAIT_STIMULATED'],
     summaryZh: '提升移动速度、免疫电棍击倒、缩短行动受限，每 tick 恢复 4 点耐力（满纯度5.33）。',
-    mechanicsNoteZh: '过量 30u 每秒高概率(18%)产生毒素与失呼吸，且有低概率(1%~2%/s)诱发心搏骤停！纯度<40%转化为科拉扎尔格。',
+    mechanicsNoteZh: '过量每秒高概率(18%)产毒与失呼吸，且有低概率诱发心搏骤停！纯度影响：移速与耐力恢复按 纯度/75% 缩放，高纯度降低手抽筋与过量心梗概率并提高过量阈值（默认30u/满纯37.5u）。',
     onMobLife(ctx, inst, ratio, dt) {
       ctx.state.stamina = Math.max(0, ctx.state.stamina - 4 * ratio * dt * normP(inst, this));
     },
@@ -1372,7 +1372,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '修复眼部损伤（每 tick 治 2 点，满纯度 2.67），清除暂时失明与视力模糊。',
-    mechanicsNoteZh: '过量 30u 反向每 tick 造成 1.5 点眼伤；纯度<45%转化为奥库莱特（暂时失明）。',
+    mechanicsNoteZh: '过量反向每 tick 造成 1.5 点眼伤；纯度影响：眼伤治疗按 纯度/75% 缩放（满纯2.67点/t），过量阈值随纯度缩放（默认30u/满纯37.5u）。',
     onMobLife(ctx, inst, ratio, dt) {
       const nP = normP(inst, this);
       ctx.state.eyeBlur = Math.max(0, ctx.state.eyeBlur - 2 * ratio * dt * nP);
@@ -1400,7 +1400,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '快速修复耳部损伤（每 tick 治 4 点，满纯度 5.33）并治疗损伤性耳聋。',
-    mechanicsNoteZh: 'rate=0.4u/tick；纯度<30%转化为蒂纳库西亚特。',
+    mechanicsNoteZh: '纯度影响：耳伤与耳聋恢复按 纯度/75% 缩放（满纯5.33点/t），100%满纯附带敏锐听觉。',
     onMobLife(ctx, inst, ratio, dt) {
       ctx.adjustOrganDamage('ears', -2 * normP(inst, this) * ratio * dt);
     },
@@ -1422,7 +1422,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     penetratesSkin: 'VAPOR',
     metabolizedTraits: ['TRAIT_NOCRITDAMAGE'],
     summaryZh: '阻止危急状态缺氧恶化！危急时每 tick 全伤各治 0.5 点，恢复耐力 2 点；与莱克索林冲突，禁止与彭斯莱特混用！',
-    mechanicsNoteZh: 'rate=0.1u/tick，过量30u引起耐力损耗/毒素/失呼吸；体内有莱克索林时会停止治疗并生成组胺。',
+    mechanicsNoteZh: '过量30u引起耐力损耗/毒素/失呼吸；体内有莱克索林时会停止治疗并生成组胺。',
     onMobLife(ctx, _inst, ratio, dt) {
       if (ctx.getBloodReagent('lexorin')) {
         const p = ctx.chance(10);
@@ -1473,7 +1473,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '极速清除体内乙醇（8u/tick，满纯度10.67u），消除混乱/眩晕/困倦，并微幅治毒 0.2/tick。',
-    mechanicsNoteZh: '纯度<35%转化为普罗霍尔（加重醉酒）。',
+    mechanicsNoteZh: '纯度影响：清乙醇与醒酒速度按 纯度/75% 缩放（满纯10.67u/t）。',
     onMobLife(ctx, inst, ratio, dt) {
       ctx.state.confusion = 0;
       ctx.state.dizzy = 0;
@@ -1574,7 +1574,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '减轻困倦与幻觉、缩短击晕时间，并清除碎心者毒素；每 tick 有 30% 概率造成 1 毒素。',
-    mechanicsNoteZh: 'rate=0.4u/tick；实际造成毒素为 0.5 * ratio（16%/s SPT_PROB）。',
+    mechanicsNoteZh: '实际造成毒素为 0.5 * ratio（16%/s SPT_PROB）。',
     onMobLife(ctx, _inst, ratio, dt) {
       ctx.state.drowsiness = Math.max(0, ctx.state.drowsiness - 5 * ratio * dt);
       if (ctx.getBloodReagent('mindbreaker')) {
@@ -1600,7 +1600,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '同时清除碎心者毒素与组胺（各 5u/tick），减少困倦与幻觉，微概率致少量毒素。',
-    mechanicsNoteZh: 'rate=0.4u/tick。',
+    mechanicsNoteZh: '',
     onMobLife(ctx, _inst, ratio, dt) {
       ctx.state.drowsiness = Math.max(0, ctx.state.drowsiness - 5 * ratio * dt);
       ctx.removeBloodReagent('mindbreaker', 2.5 * ratio * dt);
@@ -1625,8 +1625,8 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     addedTraits: ['TRAIT_VIRUS_RESISTANCE'],
-    summaryZh: '广谱抗病毒/抗感染药，代谢极慢(0.04u/tick)，抑制疾病传播与严重烧伤感染。',
-    mechanicsNoteZh: '纯度<30%转化为败血西林（免疫缺陷）。',
+    summaryZh: '广谱抗病毒/抗感染药，代谢极慢，抑制疾病传播与严重烧伤感染。',
+    mechanicsNoteZh: '',
   },
   {
     id: 'mine_salve',
@@ -1645,7 +1645,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     penetratesSkin: 'VAPOR',
     metabolizedTraits: ['TRAIT_ANALGESIA'],
     summaryZh: '强力止痛并缓慢治疗钝伤与烧伤（每 tick 各 0.25 点，即 1u 约治 1.5 点总伤）。',
-    mechanicsNoteZh: '代谢缓慢(0.16u/tick)，自带止痛效果并辅助严重烧伤伤口愈合。',
+    mechanicsNoteZh: '代谢缓慢，自带止痛效果并辅助严重烧伤伤口愈合。',
     onMobLife(ctx, _inst, ratio, dt) {
       ctx.state.brute = Math.max(0, ctx.state.brute - 0.3125 * ratio * dt);
       ctx.state.burn = Math.max(0, ctx.state.burn - 0.3125 * ratio * dt);
@@ -1726,7 +1726,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     penetratesSkin: 'VAPOR',
     metabolizedTraits: ['TRAIT_ANALGESIA'],
     summaryZh: '强效阿片类止痛药，无视受伤减速；停留过久会引起恶心、视物模糊、困倦甚至昏睡（>48周期）。',
-    mechanicsNoteZh: '过量 30u 每秒 18% 概率丢弃物品、眩晕颤抖；可用纳洛酮快速清除。',
+    mechanicsNoteZh: '过量 30u 每秒 18% 概率丢弃物品、眩晕颤抖；可用纳洛酮快速清除。纯度影响：高纯度降低恶心与嗜睡概率（按 2-纯度 缩放）并维持过量阈值，止痛主效不随纯度缩放。',
     onMobLife(ctx, inst, ratio, dt) {
       if (ctx.state.disgust < 100) {
         ctx.state.disgust += 1.5 * ratio * ctx.chance(50 * (2 - inst.creationPurity));
@@ -1853,7 +1853,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     penetratesSkin: 'VAPOR',
     metabolizedTraits: ['TRAIT_FEARLESS'],
     summaryZh: '抑制恐惧、恢复理智，并大幅消除颤抖、眩晕、混乱与厌恶。',
-    mechanicsNoteZh: 'rate=0.1u/tick；过量 30u 引起幻觉与 1 毒素/tick。',
+    mechanicsNoteZh: '过量 30u 引起幻觉与 1 毒素/tick。',
     onMobLife(ctx, _inst, ratio, dt) {
       ctx.state.jitter = Math.max(0, ctx.state.jitter - 24 * ratio * dt);
       ctx.state.dizzy = Math.max(0, ctx.state.dizzy - 24 * ratio * dt);
@@ -1897,7 +1897,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     od: 20,
     clotRate: 0.2,
     passiveBleedMod: 0.8,
-    summaryZh: '弱效凝血剂：减少 20% 失血量，每 tick 降流速 0.2；代谢较快(0.2u/tick)。',
+    summaryZh: '弱效凝血剂：减少 20% 失血量，每 tick 降流速 0.2；代谢较快。',
   }),
   {
     id: 'determination',
@@ -1955,7 +1955,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '强力止吐抗恶心，快速消除厌恶值，偶发困倦或轻度耐力损耗。',
-    mechanicsNoteZh: 'rate=0.2u/tick。',
+    mechanicsNoteZh: '',
     onMobLife(ctx, _inst, ratio, dt) {
       ctx.state.drowsiness += 2 * ratio * ctx.chance(8);
       if (ctx.state.stamina <= 0) {
@@ -1982,7 +1982,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     penetratesSkin: 'TOUCH_VAPOR',
     metabolizedTraits: ['TRAIT_ADDICTIONRESILIENT'],
     summaryZh: '阿片受体拮抗剂：接触或蒸气均可入血，每 tick 清除 6u 吗啡等阿片药，减少困倦与失呼吸。',
-    mechanicsNoteZh: 'rate=0.2u/tick，TOUCH 可穿透皮肤入血！',
+    mechanicsNoteZh: 'TOUCH 可穿透皮肤入血！',
     onMobLife(ctx, _inst, ratio, dt) {
       for (const r of [...ctx.state.blood]) {
         if (REAGENTS[r.id]?.isOpioid) {
@@ -2012,8 +2012,8 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     metabolizedTraits: ['TRAIT_ANALGESIA'],
-    summaryZh: '天关13模块化手术止痛药：代谢极慢(0.08u/tick)，提供完全无痛状态；过量 20u 严重损伤心脏！',
-    mechanicsNoteZh: '出自 modular_skyrat/modular_reagents：过量时每 tick +15 心脏损伤（上限80），纯度<55%转化为利多巴因。',
+    summaryZh: '天关13模块化手术止痛药：代谢极慢，提供完全无痛状态；过量 20u 严重损伤心脏！',
+    mechanicsNoteZh: '出自 modular_skyrat/modular_reagents：过量时每 tick +15 心脏损伤（上限80）。',
     overdoseProcess(ctx, _inst, _ratio, dt) {
       ctx.adjustOrganDamage('heart', 3 * REM * dt, 80, false);
     },
@@ -2034,7 +2034,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '导致暂时的混乱、眩晕与轻微耐力消耗。',
-    mechanicsNoteZh: 'rate=0.4u/tick。',
+    mechanicsNoteZh: '',
     onMobLife(ctx, _inst, ratio, dt) {
       ctx.state.confusion = Math.min(5, ctx.state.confusion + 1.5 * ratio * dt);
       ctx.state.dizzy = Math.min(12, ctx.state.dizzy + 3 * ratio * dt);
@@ -2058,7 +2058,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '经典呼吸稳定剂：当失去呼吸层数>=5时每 tick 减少 5 层。',
-    mechanicsNoteZh: 'rate=0.4u/tick。',
+    mechanicsNoteZh: '',
     onMobLife(ctx, _inst, ratio, dt) {
       if (ctx.state.losebreath >= 5) {
         ctx.state.losebreath = Math.max(0, ctx.state.losebreath - 2.5 * ratio * dt);
@@ -2075,7 +2075,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     healing: 0.5,
     overdoseThreshold: 30,
     summaryZh: '万能慢性回复剂：每 tick 治疗四项基础伤害各 0.5 点，过量 30u 时净造成各 1 点全伤。',
-    mechanicsNoteZh: 'rate=0.1u/tick，过量阈值 30u（先+1.5后-0.5=净+1/tick）。',
+    mechanicsNoteZh: '过量阈值 30u（先+1.5后-0.5=净+1/tick）。',
   }),
   makeOmnizineLike({
     id: 'protozine',
@@ -2086,7 +2086,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     overdoseThreshold: 30,
     color: '#d8c7b7',
     summaryZh: '弱化版万灵素：每 tick 治疗四项基础伤害各 0.2 点，过量 30u 时净造成各 1.3 点全伤。',
-    mechanicsNoteZh: 'rate=0.1u/tick。',
+    mechanicsNoteZh: '',
   }),
   makeOmnizineLike({
     id: 'godblood',
@@ -2096,7 +2096,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     healing: 0.5,
     overdoseThreshold: 150,
     summaryZh: '高阈值版万灵素：每 tick 治疗四项基础伤害各 0.5 点，过量阈值高达 150u！',
-    mechanicsNoteZh: 'rate=0.1u/tick。',
+    mechanicsNoteZh: '',
   }),
   {
     id: 'honey',
@@ -2114,7 +2114,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: false,
     unaffectedByMetabolism: true,
     penetratesSkin: 'VAPOR',
-    summaryZh: '天然食物型治疗物：代谢极快(0.4u/tick)，每 tick 55% 概率全伤各治 1 点，并向血液生成 3u 糖。',
+    summaryZh: '天然食物型治疗物：代谢极快，每 tick 55% 概率全伤各治 1 点，并向血液生成 3u 糖。',
     mechanicsNoteZh: '不受代谢效率影响（食物基类）；生成糖可能触发高血糖(120u)。',
     onMobLife(ctx, _inst, ratio, dt) {
       ctx.addBloodReagent('sugar', 1.5 * ratio * dt, 1, ctx.state.chemTemp, true);
@@ -2186,7 +2186,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     isMedicine: true,
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
-    summaryZh: '强力护肝与肝脏修复药：每 tick 修复 ~2.0 点有机肝脏损伤（代谢极快 0.6u/tick）。',
+    summaryZh: '强力护肝与肝脏修复药：代谢极快，每 tick 修复 ~2.0 点有机肝脏损伤。',
     mechanicsNoteZh: '代码系数 -0.67 * ratio * dt，配合 1.5x REM = -2.01/tick（1.0x代谢）。',
     onMobLife(ctx, _inst, ratio, dt) {
       ctx.adjustOrganDamage('liver', -0.67 * ratio * dt, undefined, true);
@@ -2207,7 +2207,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     isMedicine: true,
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
-    summaryZh: '罕见肺部修复剂：每 tick 治疗 0.5 肺伤与 0.7 钝伤（0.1u/tick）。',
+    summaryZh: '罕见肺部修复剂：每 tick 治疗 0.5 肺伤与 0.7 钝伤。',
     mechanicsNoteZh: '过量 50u 反向损伤肺部。',
     onMobLife(ctx, _inst, ratio, dt) {
       ctx.adjustOrganDamage('lungs', -0.5 * ratio * dt, undefined, true);
@@ -2233,7 +2233,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     isMedicine: true,
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
-    summaryZh: '体内催化酶(>=0.5u生效)：将摄入血液中的营养物即时转化为治疗肽！代谢极慢(0.025u/tick)。',
+    summaryZh: '体内催化酶(>=0.5u生效)：将摄入血液中的营养物即时转化为治疗肽！代谢极慢。',
     mechanicsNoteZh: '过量 10u 时代谢速率暴增32倍至 0.8u/tick 并频繁呕吐。',
     overdoseStart(ctx, inst) {
       inst.metabolizationRate = 2 * REAGENTS_METABOLISM;
@@ -2257,7 +2257,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     penetratesSkin: 'VAPOR',
     metabolizedTraits: ['TRAIT_ANALGESIA'],
     summaryZh: '使患者无视受伤造成的移动减速与疼痛。',
-    mechanicsNoteZh: 'rate=0.4u/tick。',
+    mechanicsNoteZh: '',
   },
   {
     id: 'cordiolis_hepatico',
@@ -2296,7 +2296,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     penetratesSkin: 'VAPOR',
     metabolizedTraits: ['TRAIT_BATON_RESISTANCE', 'TRAIT_ANALGESIA', 'TRAIT_STIMULATED'],
     summaryZh: '辛迪加战斗兴奋剂：极速提升移速与抗晕，每 tick 回 5 耐力；HP 处于 0~50 时全伤各治 1 点！',
-    mechanicsNoteZh: 'rate=0.2u/tick，过量阈值高达 60u。',
+    mechanicsNoteZh: '过量阈值高达 60u。',
     onMobLife(ctx, _inst, ratio, dt) {
       if (ctx.state.health < 50 && ctx.state.health > 0) {
         const heal = 1 * ratio * dt;
@@ -2392,8 +2392,8 @@ const ALL_REAGENTS: ReagentDef[] = [
     isMedicine: true,
     reverseMetabolism: true,
     penetratesSkin: 'VAPOR',
-    summaryZh: '将移动速度拉满但每 tick 造成 2 点毒素，代谢极快(1u/tick)。',
-    mechanicsNoteZh: 'Tianguan13源码为 4 * ratio * dt（按 1u/tick 速率对应每 tick 造成 2 毒素? 注意 rate=0.5 u/s -> metabolized_vol=1u -> ratio=2.5 -> 4*2.5*2 = 20? 等等，注意: metabolization_rate=0.5 u/s -> 1u/tick -> ratio=2.5，实际上代码写的是 adjust_tox_loss(4 * ratio * dt) 即随高消耗倍率放大，在 2.5 ratio 下高达 20 毒素！注：wiki 写的 2 点可能是旧版注释或相对值）。',
+    summaryZh: '将移动速度拉满但每 tick 造成 2 点毒素，代谢极快。',
+    mechanicsNoteZh: 'Tianguan13源码按 4 * ratio * dt 计算，在高消耗倍率（ratio=2.5）下实测每 tick 造成约 20 毒素（非 wiki 所写 2 点）。',
     onMobLife(ctx, _inst, ratio, dt) {
       ctx.state.tox += 4 * ratio * dt;
     },
@@ -2416,7 +2416,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     penetratesSkin: 'VAPOR',
     metabolizedTraits: ['TRAIT_ANALGESIA'],
     summaryZh: '管理员神药：几乎瞬间治愈全部伤害、器官损伤、缺血与异常状态。',
-    mechanicsNoteZh: 'rate=0.4u/tick。',
+    mechanicsNoteZh: '',
     onMobLife(ctx, _inst, ratio, dt) {
       ctx.state.brute = Math.max(0, ctx.state.brute - 2.5 * ratio * dt);
       ctx.state.burn = Math.max(0, ctx.state.burn - 2.5 * ratio * dt);
@@ -2452,7 +2452,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: false,
     penetratesSkin: 'VAPOR',
     summaryZh: '利比特低纯度(<30%)逆产物：使酒精耐受恶化并轻微损伤肝脏(0.1/tick)。',
-    mechanicsNoteZh: 'rate=0.4u/tick。',
+    mechanicsNoteZh: '',
     onMobLife(ctx, _inst, ratio, dt) {
       ctx.adjustOrganDamage('liver', 0.05 * ratio * dt);
     },
@@ -2473,7 +2473,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: false,
     penetratesSkin: 'VAPOR',
     summaryZh: '赫比妥低纯度(<30%)逆产物：召唤死灵之手抓取患者并造成毒素损伤。',
-    mechanicsNoteZh: 'rate=1.0u/tick。',
+    mechanicsNoteZh: '',
     onMobLife(ctx, inst, ratio, dt) {
       ctx.state.tox += metabolizeFreeConstant(0.5, inst.metabolizationRate) * 0.25 * ratio * dt;
     },
@@ -2494,7 +2494,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: false,
     penetratesSkin: 'VAPOR',
     summaryZh: '艾尤里低纯度(<35%)逆产物：干扰视觉，每 tick 造成 0.1 眼伤与持续视物模糊。',
-    mechanicsNoteZh: 'rate=0.4u/tick。',
+    mechanicsNoteZh: '',
     onMobLife(ctx, _inst, ratio, dt) {
       ctx.adjustOrganDamage('eyes', 0.05 * ratio * dt);
       ctx.state.eyeBlur += 1.25 * dt;
@@ -2516,7 +2516,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: false,
     penetratesSkin: 'VAPOR',
     summaryZh: '伦图里低纯度(<40%)逆产物：肌肉松弛剂，大幅降低移动速度。',
-    mechanicsNoteZh: 'rate=0.4u/tick，致成瘾且无治疗作用。',
+    mechanicsNoteZh: '致成瘾且无治疗作用。',
   },
   {
     id: 'herignis',
@@ -2534,7 +2534,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: false,
     penetratesSkin: 'VAPOR',
     summaryZh: '赫丘利低纯度(<30%)逆产物：与赫丘利相反，急剧升高体温并容易引燃热伤！过量25u伤肝。',
-    mechanicsNoteZh: 'rate=0.4u/tick，过量25u每 tick 造成 2 肝脏损伤并加速升温。',
+    mechanicsNoteZh: '过量 25u 每 tick 造成 2 肝脏损伤并加速升温；纯度影响：升温幅度与过量阈值随纯度缩放。',
     onMobLife(ctx, inst, ratio, dt) {
       const heating = 0.5 * ctx.randRange(5, 25) * inst.creationPurity * ratio * dt;
       ctx.state.chemTemp += heating;
@@ -2565,7 +2565,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: false,
     penetratesSkin: 'VAPOR',
     summaryZh: '多功能解毒剂逆产物(<35%)：仅当体内只有它一种试剂时才治疗毒素，否则每秒损伤肺部！',
-    mechanicsNoteZh: '与多功能解毒剂恰好相反的机制。',
+    mechanicsNoteZh: '与多功能解毒剂恰好相反的机制；纯度影响：单药解毒量随纯度线性缩放。',
     onMobLife(ctx, inst, ratio, dt) {
       if (ctx.state.blood.length > 1) {
         ctx.adjustOrganDamage('lungs', 0.5 * dt, undefined, true);
@@ -2591,7 +2591,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: false,
     penetratesSkin: 'VAPOR',
     summaryZh: '赛维尔逆产物(<45%)：医疗扫描示踪剂，每隔 9 秒施加一次中等毒素伤害。',
-    mechanicsNoteZh: 'rate=0.3u/tick。',
+    mechanicsNoteZh: '纯度影响：周期毒伤随纯度线性缩放。',
     onMobLife(ctx, inst, ratio, dt) {
       const rem = Number(inst.data.poisonTimer ?? 0) - dt;
       if (rem <= 0) {
@@ -2661,7 +2661,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: false,
     penetratesSkin: 'VAPOR',
     summaryZh: '肯尔莫逆产物(<50%)：肺部保护膜，扩大肺部耐受极端高低温空气的范围。',
-    mechanicsNoteZh: 'rate=0.4u/tick。',
+    mechanicsNoteZh: '',
   },
   {
     id: 'nooartrium',
@@ -2682,7 +2682,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     deadProcess: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '彭斯莱特逆产物(<25%)：若心脏完好可短暂唤醒刚死去的尸体！期间免疫死亡但持续撕裂钝伤与心脏，药尽/过量会炸毁心脏。',
-    mechanicsNoteZh: '自耗药 + 死者生效；过量20u直接引爆心脏。',
+    mechanicsNoteZh: '自耗药 + 死者生效；过量 20u 直接引爆心脏。纯度影响：纯度越高起尸期间的出血、钝伤与伤心副伤越轻，过量阈值随纯度缩放。',
     onMobDead(ctx, inst) {
       const heart = ctx.state.organs.heart;
       if (heart.failing || heart.damage >= heart.maxHealth) return;
@@ -2758,7 +2758,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: false,
     penetratesSkin: 'VAPOR',
     summaryZh: '奥沙雄龙逆产物(<30%)：合成代谢类固醇，过量25u导致体温飙升、耐力损耗、吐血与瘫痪。',
-    mechanicsNoteZh: 'rate=0.2u/tick。',
+    mechanicsNoteZh: '',
     overdoseProcess(ctx, _inst, ratio) {
       const p = ctx.chance(25);
       if (p > 0) {
@@ -2786,7 +2786,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     penetratesSkin: 'VAPOR',
     metabolizedTraits: ['TRAIT_EASYBLEED'],
     summaryZh: '沙丁胺醇逆产物(<25%)：血液稀释剂，代谢期间极易出现大量流血伤口。',
-    mechanicsNoteZh: 'rate=0.08u/tick（极慢）。',
+    mechanicsNoteZh: '代谢极慢。',
   },
   {
     id: 'pendetide',
@@ -2803,7 +2803,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     isMedicine: false,
     reverseMetabolism: false,
     penetratesSkin: 'VAPOR',
-    summaryZh: '喷替酸逆产物(<40%)：极慢代谢(0.025u/tick)，瞬间清光体内赛维尔、碘化钾、多功能解毒剂并加重辐射痛苦。',
+    summaryZh: '喷替酸逆产物(<40%)：代谢极慢，瞬间清光体内赛维尔、碘化钾、多功能解毒剂并加重辐射痛苦。',
     mechanicsNoteZh: '每 tick 按 40*ratio*dt 速率清除上述解毒剂。',
     onMobLife(ctx, _inst, ratio, dt) {
       ctx.removeBloodReagent('seiver', 40 * ratio * dt);
@@ -2865,7 +2865,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: false,
     penetratesSkin: 'VAPOR',
     summaryZh: '氨化汞逆产物(<50%)：引起间歇性歇斯底里尖叫，无毒素/治疗效果。',
-    mechanicsNoteZh: 'rate=0.4u/tick。',
+    mechanicsNoteZh: '',
   },
   {
     id: 'inreziniver',
@@ -2883,7 +2883,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: false,
     penetratesSkin: 'VAPOR',
     summaryZh: '瑞扎酮逆产物(<25%)：诱导重度鱼类恐惧症创伤，直到代谢完毕才消失。',
-    mechanicsNoteZh: 'rate=0.05u/tick。',
+    mechanicsNoteZh: '',
   },
   {
     id: 'neruwhine',
@@ -2901,7 +2901,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     isMedicine: false,
     reverseMetabolism: false,
     penetratesSkin: 'VAPOR',
-    summaryZh: '神经碱逆产物(<50%)：在体内期间诱导随机临时脑创伤，代谢极慢(0.025u/tick)。',
+    summaryZh: '神经碱逆产物(<50%)：在体内期间诱导随机临时脑创伤，代谢极慢。',
     mechanicsNoteZh: '无毒素加成。',
   },
   {
@@ -2923,7 +2923,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     deadProcess: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '麻黄碱逆产物(<40%)：干扰天然起搏器，迫使患者必须手动泵动心脏。',
-    mechanicsNoteZh: 'rate=1.0u/tick，自耗药。',
+    mechanicsNoteZh: '自耗药。',
   },
   {
     id: 'oculater',
@@ -2942,7 +2942,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: false,
     penetratesSkin: 'VAPOR',
     summaryZh: '明目素逆产物(<45%)：暂时致盲，代谢结束后恢复视力。',
-    mechanicsNoteZh: 'rate=0.2u/tick。',
+    mechanicsNoteZh: '',
   },
   {
     id: 'tinacusiate',
@@ -2961,7 +2961,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: false,
     penetratesSkin: 'VAPOR',
     summaryZh: '复聪剂杂质：扰乱听觉字体样式，造成 0.1 点轻微肝损/tick。',
-    mechanicsNoteZh: 'rate=0.04u/tick。',
+    mechanicsNoteZh: '',
     onMobLife(ctx, inst, ratio, dt) {
       ctx.adjustOrganDamage('liver', metabolizeFreeConstant(0.5, inst.metabolizationRate) * 0.1 * ratio * dt, undefined, true);
     },
@@ -2982,7 +2982,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: false,
     penetratesSkin: 'VAPOR',
     summaryZh: '安替霍尔逆产物(<35%)：潜伏在血液中大幅增强酒精的醉酒威力。',
-    mechanicsNoteZh: 'rate=0.05u/tick。',
+    mechanicsNoteZh: '',
   },
   {
     id: 'lidopaine',
@@ -3024,7 +3024,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     penetratesSkin: 'VAPOR',
     metabolizedTraits: ['TRAIT_IMMUNODEFICIENCY'],
     summaryZh: '太空西林逆产物(<30%)：削弱免疫系统并加速病毒感染恶化。',
-    mechanicsNoteZh: 'rate=0.1u/tick。',
+    mechanicsNoteZh: '',
   },
   {
     id: 'probital_failed',
@@ -3042,7 +3042,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: false,
     penetratesSkin: 'VAPOR',
     summaryZh: '益生泰尔失败产物：会将食物中的营养物催化为损伤大脑的朊病毒肽！',
-    mechanicsNoteZh: 'rate=0.025u/tick，过量10u提速至 1.6u/tick。',
+    mechanicsNoteZh: '过量10u提速至 1.6u/tick。',
     overdoseStart(_ctx, inst) {
       inst.metabolizationRate = 4 * REAGENTS_METABOLISM;
     },
@@ -3063,7 +3063,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: false,
     penetratesSkin: 'VAPOR',
     summaryZh: '错误催化产物：消耗饱食度并每 tick 造成 0.25 点大脑损伤（上限170）。',
-    mechanicsNoteZh: 'rate=0.4u/tick。',
+    mechanicsNoteZh: '',
     onMobLife(ctx, _inst, ratio, dt) {
       ctx.adjustOrganDamage('brain', 0.125 * ratio * dt, 170);
     },
@@ -3084,7 +3084,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: false,
     penetratesSkin: 'VAPOR',
     summaryZh: '通用未指定逆试剂（如低纯度甘露醇产物）：每 tick 造成 1 点毒素伤害。',
-    mechanicsNoteZh: 'rate=0.4u/tick。',
+    mechanicsNoteZh: '',
     onMobLife(ctx, inst, ratio, dt) {
       ctx.state.tox += metabolizeFreeConstant(0.5, inst.metabolizationRate) * 1 * ratio * dt;
     },
@@ -3188,8 +3188,8 @@ const ALL_REAGENTS: ReagentDef[] = [
     liverToleranceMultiplier: 1,
     reverseMetabolism: false,
     penetratesSkin: 'VAPOR',
-    summaryZh: '反医疗毒药：极慢代谢(0.032u/tick)，以极快速度清光体内所有医疗药物(最高62.5u/tick)并瘫痪多功能解毒剂的清除！',
-    mechanicsNoteZh: '若体内有甘汞或喷替酸，清药速率降低为1/10；清除安纳西需依赖木泰尔、甘汞、喷替酸或氨化汞。',
+    summaryZh: '反医疗毒药：代谢极慢，以极快速度清光体内所有医疗药物(最高62.5u/tick)并瘫痪多功能解毒剂的清除！',
+    mechanicsNoteZh: '若体内有甘汞或喷替酸，清药速率降低为1/10；清除安纳西需依赖木泰尔、甘汞、喷替酸或氨化汞。纯度影响：清药速率按 纯度/75% 缩放（满纯×1.33）。',
     onMobLife(ctx, inst, ratio, dt) {
       const hasSuppressor = ctx.state.blood.some(
         (r) => (r.id === 'calomel' || r.id === 'pen_acid') && r.volume > 0,
@@ -3231,7 +3231,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: false,
     penetratesSkin: 'VAPOR',
     summaryZh: '强力阻断呼吸毒药：阻止肺部正常呼吸并每 tick 造成 5 点窒息（满纯度6.67），与肾上腺素相遇会剧烈反应生成组胺。',
-    mechanicsNoteZh: '肾上腺素与其同时存在时会停止加血并彼此抵消清除，10%/s 生成 4u 组胺。',
+    mechanicsNoteZh: '肾上腺素与其同时存在时会停止加血并彼此抵消清除，10%/s 生成 4u 组胺。纯度影响：窒息与失呼吸按 纯度/75% 缩放（满纯6.67点/t）。',
     onMobLife(ctx, inst, ratio, dt) {
       ctx.state.oxy += 2.5 * normP(inst, this) * ratio * dt;
       ctx.state.losebreath += 1 * normP(inst, this) * ratio * dt;
@@ -3258,7 +3258,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: false,
     penetratesSkin: 'VAPOR',
     summaryZh: '过敏休克介质：随机造成钝伤；过量 30u 时每 tick 造成 4 点钝伤、毒素与窒息！可用苯海拉明/双苯突触嗪解毒。',
-    mechanicsNoteZh: 'rate=0.1u/tick，OD=30u。',
+    mechanicsNoteZh: '',
     onMobLife(ctx, _inst, ratio) {
       const p = ctx.chance(30) * 0.25 * 0.75;
       if (p > 0) {
@@ -3293,7 +3293,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: false,
     penetratesSkin: 'VAPOR',
     summaryZh: '致幻毒素，可用突触嗪/双苯突触嗪或氟哌啶醇清除。',
-    mechanicsNoteZh: 'rate=0.4u/tick。',
+    mechanicsNoteZh: '',
   },
   {
     id: 'ethanol',
@@ -3314,7 +3314,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     unaffectedByMetabolism: true,
     penetratesSkin: 'VAPOR',
     summaryZh: '纯酒精：在体内造成醉酒与轻微有机肝损伤，可用安替霍尔迅速清除。',
-    mechanicsNoteZh: 'rate=0.12u/tick。',
+    mechanicsNoteZh: '',
     onMobLife(ctx, inst, _ratio, dt) {
       const bp = ctx.getBloodReagent('prohol') ? 85 : 65;
       const dmg = (Math.sqrt(inst.volume) * Math.pow(bp, 1.6) * 0.015 * dt) / 300;
@@ -3337,7 +3337,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: false,
     unaffectedByMetabolism: true,
     penetratesSkin: 'VAPOR',
-    summaryZh: '快速消耗(2u/tick)；过量 120u 引发高血糖休克昏睡 20 秒，可用胰岛素清除。',
+    summaryZh: '代谢极快；过量 120u 引发高血糖休克昏睡 20 秒，可用胰岛素清除。',
     mechanicsNoteZh: '蜂蜜或生理盐水过量会产生糖。',
     overdoseStart(ctx) {
       ctx.state.sleeping = Math.max(ctx.state.sleeping, 20);
@@ -3363,7 +3363,7 @@ const ALL_REAGENTS: ReagentDef[] = [
     reverseMetabolism: false,
     penetratesSkin: 'NONE',
     summaryZh: '万能稀释溶剂（如稀释木泰尔静脉滴注）：入血每 tick 恢复 0.1u 血量并辅助有机肝恢复；泼洒可灭火。',
-    mechanicsNoteZh: 'rate=0.4u/tick。',
+    mechanicsNoteZh: '',
     exposeMob(ctx, method) {
       if (method === 'TOUCH') {
         ctx.state.onFire = false;
@@ -3380,10 +3380,58 @@ const ALL_REAGENTS: ReagentDef[] = [
   },
 ];
 
+/**
+ * Reagents whose own therapeutic, side-effect, or toxic intensity depends on their own purity.
+ * Excludes `super_melatonin`, which boosts other medicines' purity rather than scaling its own effect.
+ */
+export const PURITY_DEPENDENT_EFFECT_IDS: ReadonlySet<string> = new Set([
+  // c2
+  'libital',
+  'helbital',
+  'probital',
+  'aiuri',
+  'lenturi',
+  'hercuri',
+  'synthflesh',
+  'multiver',
+  'seiver',
+  'syriniver',
+  'musiver',
+  'tirimol',
+  'convermol',
+  'penthrite',
+  // superior
+  'sal_acid',
+  'oxandrolone',
+  // unique
+  'mannitol',
+  'neurine',
+  'ephedrine',
+  'oculine',
+  'inacusiate',
+  'antihol',
+  'morphine',
+  // inverse
+  'herignis',
+  'monover',
+  'technetium',
+  'nooartrium',
+  // helper / toxins
+  'toxin',
+  'amatoxin',
+  'anacea',
+  'lexorin',
+]);
+
+/** Whether a reagent's own per-tick / exposure effect is independent of its own purity. */
+export function isPurityIndependentEffect(def: ReagentDef): boolean {
+  return !PURITY_DEPENDENT_EFFECT_IDS.has(def.id);
+}
+
 export const REAGENT_LIST: ReagentDef[] = ALL_REAGENTS;
 
 export const REAGENTS: Record<string, ReagentDef> = Object.fromEntries(
-  ALL_REAGENTS.map((r) => [r.id, r]),
+  REAGENT_LIST.map((r) => [r.id, r]),
 );
 
 export function getDisplayColor(hex: string): string {
@@ -3471,7 +3519,7 @@ export function isNoAllergyReagent(def: ReagentDef): boolean {
   return def.isMedicine ? ALLERGY_BLACKLIST_IDS.has(def.id) : NON_MED_THERAPEUTIC_IDS.has(def.id);
 }
 
-export const EXTREME_ALLERGY_CANDIDATES: ReagentDef[] = ALL_REAGENTS.filter(isExtremeAllergyCandidate);
+export const EXTREME_ALLERGY_CANDIDATES: ReagentDef[] = REAGENT_LIST.filter(isExtremeAllergyCandidate);
 
 export function rollRandomAllergies(count = 6, rng: () => number = Math.random): string[] {
   const pool = EXTREME_ALLERGY_CANDIDATES.map((r) => r.id);
@@ -3487,6 +3535,7 @@ export function rollRandomAllergies(count = 6, rng: () => number = Math.random):
 export const MECHANISM_TRAITS = [
   '治疗药物',
   '无过敏',
+  '纯度无关效果',
   '无过量(无OD)',
   '有过量(OD)',
   '有逆反应',
@@ -3533,6 +3582,7 @@ export function getReagentTraits(def: ReagentDef): string[] {
   const traits = new Set<string>(def.targets);
   if (def.isMedicine) traits.add('治疗药物');
   if (isNoAllergyReagent(def)) traits.add('无过敏');
+  if (isPurityIndependentEffect(def)) traits.add('纯度无关效果');
   if (def.overdoseThreshold === 0) traits.add('无过量(无OD)');
   else traits.add('有过量(OD)');
   if (def.inverseChemVal > 0) traits.add('有逆反应');

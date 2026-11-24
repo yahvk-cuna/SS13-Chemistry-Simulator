@@ -9,6 +9,7 @@ import {
   getReagentTraits,
   isChemicalAllergyTrigger,
   isNoAllergyReagent,
+  isPurityIndependentEffect,
 } from '../engine/reagents';
 import type { ReagentDef } from '../engine/types';
 
@@ -352,6 +353,14 @@ export function HandbookModal({
                               title="位于上游过敏黑名单或非 /medicine 安全路径，不触发极端药物过敏与化学过敏突变"
                             >
                               无过敏
+                            </span>
+                          )}
+                          {isPurityIndependentEffect(r) && (
+                            <span
+                              className="tag-chip"
+                              title="单 tick 主效不随纯度缩放；若存在过量阈值或逆反应，仍按纯度判定"
+                            >
+                              纯度无关效果
                             </span>
                           )}
                           {patientAllergySet.has(r.id) && <span className="tag-chip danger">患者过敏原</span>}

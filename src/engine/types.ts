@@ -343,11 +343,18 @@ export interface SimSummary {
   triggeredSleep: boolean;
 }
 
+export interface ReagentEffectiveOdSummary {
+  peakOd: number;
+  minOd: number;
+  maxOd: number;
+}
+
 export interface SimResult {
   snapshots: TickSnapshot[];
   events: SimEvent[];
   summary: SimSummary;
   reagentsSeen: string[];
+  reagentEffectiveODs: Record<string, ReagentEffectiveOdSummary>;
 }
 
 export interface SimScenario {

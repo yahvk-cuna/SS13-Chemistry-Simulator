@@ -454,6 +454,9 @@ export function runSimulation(
       existing.creationPurity = existing.purity;
       existing.ph = (existing.ph * existing.volume + def.ph * amount) / total;
       existing.volume = total;
+      if (isBlood) {
+        recordBloodOd(reagentId, existing.overdoseThreshold, existing.volume);
+      }
       return amount;
     }
 
@@ -481,6 +484,7 @@ export function runSimulation(
           def.overdoseThreshold + (inst.creationPurity - def.defaultPurity) * def.overdoseThreshold,
         );
       }
+      recordBloodOd(reagentId, inst.overdoseThreshold, inst.volume);
       holder.push(inst);
       def.onMobAdd?.(ctx, inst);
     } else {
@@ -598,6 +602,23 @@ export function runSimulation(
 
   // Initial snapshot at t=0
   const snapshots: TickSnapshot[] = [takeSnapshot(state, 0, 0)];
+  const bloodOdStats = new Map<string, { peakVol: number; peakOd: number; minOd: number; maxOd: number }>();
+
+  function recordBloodOd(id: string, rawOd: number, vol: number): void {
+    if (rawOd <= 0) return;
+    const od = Number(rawOd.toFixed(2));
+    const prev = bloodOdStats.get(id);
+    if (!prev) {
+      bloodOdStats.set(id, { peakVol: vol, peakOd: od, minOd: od, maxOd: od });
+      return;
+    }
+    if (vol >= prev.peakVol) {
+      prev.peakVol = vol;
+      prev.peakOd = od;
+    }
+    prev.minOd = Math.min(prev.minOd, od);
+    prev.maxOd = Math.max(prev.maxOd, od);
+  }
   let fullHealTime: number | null =
     state.health >= MAX_HEALTH && state.brute === 0 && state.burn === 0 && state.tox === 0 && state.oxy === 0
       ? 0
@@ -1403,10 +1424,20 @@ export function runSimulation(
     triggeredSleep,
   };
 
+  const reagentEffectiveODs: SimResult['reagentEffectiveODs'] = {};
+  for (const [id, st] of bloodOdStats.entries()) {
+    reagentEffectiveODs[id] = {
+      peakOd: st.peakOd,
+      minOd: st.minOd,
+      maxOd: st.maxOd,
+    };
+  }
+
   return {
     snapshots,
     events,
     summary,
     reagentsSeen: Array.from(reagentsSeenSet),
+    reagentEffectiveODs,
   };
 }

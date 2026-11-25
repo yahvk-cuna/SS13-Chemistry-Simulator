@@ -730,4 +730,21 @@ describe('Tianguan13 Pharmacology Simulator', () => {
     expect(exempt.summary.triggeredAllergies).toEqual([]);
     expect(exempt.events.some((e) => e.category === 'allergy')).toBe(false);
   });
+
+  it('records blood-entry effective OD even when reagent fully metabolizes in the same tick', () => {
+    // 0.15u 75% purity sal_acid (base OD 25u @ 100% -> effective OD 18.75u) fully metabolizes in tick 1 (< 0.2u/tick), leaving bloodReagents empty at every snapshot
+    const res = runSimulation(
+      makeBasePatient({ brute: 20 }),
+      [dose('sal_acid', 0.15, { method: 'INJECT', purity: 0.75 })],
+      { durationSeconds: 10, rngMode: 'expected', seed: 1 },
+    );
+
+    expect(res.reagentsSeen).toContain('sal_acid');
+    expect(res.snapshots.every((s) => s.bloodReagents.every((r) => r.id !== 'sal_acid'))).toBe(true);
+    expect(res.reagentEffectiveODs.sal_acid).toEqual({
+      peakOd: 18.75,
+      minOd: 18.75,
+      maxOd: 18.75,
+    });
+  });
 });

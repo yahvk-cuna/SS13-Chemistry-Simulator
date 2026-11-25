@@ -7,7 +7,7 @@ import {
   type CSSProperties,
   type PointerEvent,
 } from 'react';
-import { REAGENTS, getDisplayColor } from '../engine/reagents';
+import { REAGENTS, computeEffectiveOD, getDisplayColor } from '../engine/reagents';
 import type { OrganSlot, SimResult, TickSnapshot } from '../engine/types';
 
 interface TimelineChartsProps {
@@ -68,6 +68,10 @@ const BLOOD_TICKS = [0, 112, 280, 420, 560] as const;
 
 function buildPolyline(points: [number, number][]): string {
   return points.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+}
+
+function formatOdValue(val: number): string {
+  return Number(val.toFixed(2)).toString();
 }
 
 function nearestSnap(snapshots: TickSnapshot[], time: number): TickSnapshot {
@@ -315,6 +319,47 @@ export function TimelineCharts({
     }
     return Math.ceil(m / 5) * 5;
   }, [snapshots]);
+
+  const reagentOdStats = useMemo(() => {
+    const stomachStats = new Map<string, { peakVol: number; peakOd: number; minOd: number; maxOd: number }>();
+
+    for (const s of snapshots) {
+      for (const r of s.stomachReagents) {
+        const def = REAGENTS[r.id];
+        if (!def || def.overdoseThreshold <= 0) continue;
+        const od = Number(computeEffectiveOD(def, r.purity).toFixed(2));
+        const prev = stomachStats.get(r.id);
+        if (!prev) {
+          stomachStats.set(r.id, { peakVol: r.volume, peakOd: od, minOd: od, maxOd: od });
+        } else {
+          if (r.volume > prev.peakVol) {
+            prev.peakVol = r.volume;
+            prev.peakOd = od;
+          }
+          prev.minOd = Math.min(prev.minOd, od);
+          prev.maxOd = Math.max(prev.maxOd, od);
+        }
+      }
+    }
+
+    const merged = new Map<string, { peakOd: number; minOd: number; maxOd: number }>();
+    for (const id of allReagentIds) {
+      const bloodEntry = result.reagentEffectiveODs[id];
+      if (bloodEntry) {
+        merged.set(id, bloodEntry);
+      } else {
+        const stomachEntry = stomachStats.get(id);
+        if (stomachEntry) {
+          merged.set(id, {
+            peakOd: stomachEntry.peakOd,
+            minOd: stomachEntry.minOd,
+            maxOd: stomachEntry.maxOd,
+          });
+        }
+      }
+    }
+    return merged;
+  }, [allReagentIds, result.reagentEffectiveODs, snapshots]);
 
   const y2Of = (v: number) => PAD_T + ((maxReagentVol - v) / maxReagentVol) * P2_H;
 
@@ -701,16 +746,23 @@ export function TimelineCharts({
               const col = getDisplayColor(def.color);
               const isPinned = validPinnedReagent === id;
               const isActive = activeReagent === id;
+              const odStats = reagentOdStats.get(id);
+              const baseOd = def.overdoseThreshold;
+              const effOd = odStats ? odStats.peakOd : baseOd;
+              const odTitle =
+                baseOd > 0
+                  ? odStats && Math.abs(odStats.maxOd - odStats.minOd) > 0.05
+                    ? `点击固定高亮并锁定过量参考线（有效 OD: ${formatOdValue(odStats.minOd)}–${formatOdValue(odStats.maxOd)}u，基础 ${formatOdValue(baseOd)}u）；悬停或聚焦可预览`
+                    : Math.abs(effOd - baseOd) > 0.05
+                      ? `点击固定高亮并锁定过量参考线（有效 OD: ${formatOdValue(effOd)}u，基础 ${formatOdValue(baseOd)}u）；悬停或聚焦可预览`
+                      : `点击固定高亮并锁定过量参考线（有效 OD: ${formatOdValue(effOd)}u）；悬停或聚焦可预览`
+                  : '点击固定高亮曲线；悬停或聚焦可预览';
               return (
                 <button
                   key={id}
                   type="button"
                   aria-pressed={isPinned}
-                  title={
-                    def.overdoseThreshold > 0
-                      ? `点击固定高亮并锁定过量参考线（基础 OD: ${def.overdoseThreshold}u）；悬停或聚焦可预览`
-                      : '点击固定高亮曲线；悬停或聚焦可预览'
-                  }
+                  title={odTitle}
                   className={`legend-pill ${isActive ? 'active' : ''} ${isPinned ? 'pinned' : ''}`}
                   onPointerEnter={(e) => {
                     if (e.pointerType !== 'touch') setHoveredReagent(id);
@@ -782,15 +834,28 @@ export function TimelineCharts({
               </g>
             ))}
 
-            {/* Hover/Focus/Pinned OD threshold reference line */}
+            {/* Hover/Focus/Pinned effective OD threshold reference line */}
             {activeReagent &&
               REAGENTS[activeReagent]?.overdoseThreshold > 0 &&
               (() => {
                 const def = REAGENTS[activeReagent];
-                const od = def.overdoseThreshold;
+                const baseOd = def.overdoseThreshold;
+                const stats = reagentOdStats.get(activeReagent);
+                const displayEntry =
+                  displaySnap.bloodReagents.find((r) => r.id === activeReagent) ??
+                  displaySnap.stomachReagents.find((r) => r.id === activeReagent);
+                const varies = Boolean(stats && Math.abs(stats.maxOd - stats.minOd) > 0.05);
+                const od = (varies ? displayEntry?.overdoseThreshold : undefined) ?? stats?.peakOd ?? baseOd;
                 const aboveRange = od > maxReagentVol;
                 const lineY = aboveRange ? PAD_T : y2Of(od);
                 const labelY = aboveRange ? PAD_T + 12 : lineY - 4 < PAD_T + 10 ? lineY + 12 : lineY - 4;
+                const detailSuffix =
+                  varies && stats
+                    ? `（全程 ${formatOdValue(stats.minOd)}–${formatOdValue(stats.maxOd)}u · 基础 ${formatOdValue(baseOd)}u）`
+                    : Math.abs(od - baseOd) > 0.05
+                      ? `（基础 ${formatOdValue(baseOd)}u）`
+                      : '';
+                const odLabel = `${aboveRange ? '↑ ' : ''}${def.zhName} 有效OD: ${formatOdValue(od)}u${detailSuffix}${aboveRange ? '（高于当前坐标上限）' : ''}`;
                 return (
                   <g>
                     <line
@@ -802,9 +867,7 @@ export function TimelineCharts({
                       strokeDasharray="4 3"
                     />
                     <text x={W - PAD_R - 4} y={labelY} textAnchor="end" fontSize="10" fill="#fca5a5">
-                      {aboveRange
-                        ? `↑ ${def.zhName} 基础OD: ${od}u（高于当前坐标上限）`
-                        : `${def.zhName} 基础OD: ${od}u`}
+                      {odLabel}
                     </text>
                   </g>
                 );

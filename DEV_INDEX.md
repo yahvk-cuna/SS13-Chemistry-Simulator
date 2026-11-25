@@ -124,11 +124,13 @@
   - [_stomach.dm](file:///home/yahvk/Tianguan13/code/modules/surgery/organs/internal/stomach/_stomach.dm)（胃部吸收速率与消化逻辑）
   - [_heart.dm](file:///home/yahvk/Tianguan13/code/modules/surgery/organs/internal/heart/_heart.dm)（心脏衰竭与心停骤停触发）
   - [_lungs.dm](file:///home/yahvk/Tianguan13/code/modules/surgery/organs/internal/lungs/_lungs.dm)（肺损伤影响呼吸频率与窒息阈值）
-- 碳基/人类生命循环：
-  - [carbon/life.dm](file:///home/yahvk/Tianguan13/code/modules/mob/living/carbon/life.dm)、[carbon/carbon.dm](file:///home/yahvk/Tianguan13/code/modules/mob/living/carbon/carbon.dm)、[carbon/damage_procs.dm](file:///home/yahvk/Tianguan13/code/modules/mob/living/carbon/damage_procs.dm)、[living/damage_procs.dm](file:///home/yahvk/Tianguan13/code/modules/mob/living/damage_procs.dm)
+- 碳基/人类生命循环与子系统周期：
+  - [living/life.dm](file:///home/yahvk/Tianguan13/code/modules/mob/living/life.dm)、[carbon/life.dm](file:///home/yahvk/Tianguan13/code/modules/mob/living/carbon/life.dm)、[carbon/carbon.dm](file:///home/yahvk/Tianguan13/code/modules/mob/living/carbon/carbon.dm)、[carbon/damage_procs.dm](file:///home/yahvk/Tianguan13/code/modules/mob/living/carbon/damage_procs.dm)、[living/damage_procs.dm](file:///home/yahvk/Tianguan13/code/modules/mob/living/damage_procs.dm)
   - [human/life.dm](file:///home/yahvk/Tianguan13/code/modules/mob/living/carbon/human/life.dm)、[human/_species.dm](file:///home/yahvk/Tianguan13/code/modules/mob/living/carbon/human/_species.dm)（体表/核心温传导与自动回温对数方程）
   - [living/blood.dm](file:///home/yahvk/Tianguan13/code/modules/mob/living/blood.dm)（注意位于 `living/` 下而非 `carbon/`！失血、造血、低血量缺氧计算）
   - [stamcrit.dm](file:///home/yahvk/Tianguan13/code/datums/status_effects/debuffs/stamcrit.dm)（耐力损耗 ≥100 触发倒地及 10 秒重置定时器）
+  - [mobs.dm](file:///home/yahvk/Tianguan13/code/controllers/subsystem/mobs.dm) & [processing.dm](file:///home/yahvk/Tianguan13/code/controllers/subsystem/processing/processing.dm)：`SSmobs` 周期 `wait = 2 SECONDS`，`SSprocessing` 周期 `wait = 1 SECONDS`（嵌入物/贴片驱动）。
+  - [stacked_effects.dm](file:///home/yahvk/Tianguan13/code/modules/reagents/stacked_effects/stacked_effects.dm)：`GLOB.stacked_metabolization_effect`（`metabolize()` 末尾的多试剂协同副作用钩子，当前主要为咖啡/茶类饮品组合效果）。
 
 ### 3.5 官方汉化词表与译名优先级规则
 
@@ -143,7 +145,7 @@
 
 ### 3.6 制药容器、机器与成品获取（上游检索缓存）
 
-- [patch.dm](file:///home/yahvk/Tianguan13/code/modules/reagents/reagent_containers/patch.dm)：`/obj/item/reagent_containers/applicator/patch`（上限 `40u`）默认挂载 `/datum/embedding/med_patch`（`transfer_per_second = 0.75`，每 tick `trans_to(owner, 0.75, PATCH)` 按容器内各组分含量比例同时缓释总计 `0.75u`，静滞暂停）；全库唯一绑定 `/datum/embedding/med_patch/instant` 即时一次性释放全部药量的物品是预制 `patch/synthflesh`（`20u` 100% 纯度合成肉）。
+- [patch.dm](file:///home/yahvk/Tianguan13/code/modules/reagents/reagent_containers/patch.dm) & [embedding.dm](file:///home/yahvk/Tianguan13/code/datums/embedding.dm)：`/obj/item/reagent_containers/applicator/patch`（上限 `40u`）默认挂载 `/datum/embedding/med_patch`（`embed_into` 注册进 `SSprocessing`，每次 `process_effect` 调用 `trans_to(owner, 0.75, PATCH)` 按容器内各组分含量比例同时缓释总计 `0.75u`，静滞暂停）；全库唯一绑定 `/datum/embedding/med_patch/instant` 即时一次性释放全部药量的物品是预制 `patch/synthflesh`（`20u` 100% 纯度合成肉）。
 - [pill.dm](file:///home/yahvk/Tianguan13/code/modules/reagents/reagent_containers/pill.dm)：`/obj/item/reagent_containers/applicator/pill` 单颗上限 `volume = 50`（`50u`），口服进入胃部消化。
 - [code/_globalvars/lists/reagents.dm](file:///home/yahvk/Tianguan13/code/_globalvars/lists/reagents.dm)：`GLOB.reagent_containers[CAT_PATCHES]` 仅包含 `/obj/item/reagent_containers/applicator/patch/style`（全部继承缓释基类），ChemMaster 与压药机均不能打印任意药物的即时贴片。
 - [chem_master.dm](file:///home/yahvk/Tianguan13/code/modules/reagents/chemistry/machinery/chem_master.dm)：`ChemMaster 3000` 可将缓冲区药液分装打印为 `CAT_PATCHES`（缓释贴片）以及药丸、药瓶、针管等容器。
@@ -293,4 +295,5 @@
 - [TimelineCharts.tsx](file:///home/yahvk/ss13-chem-sim/src/components/TimelineCharts.tsx) 与 [index.css](file:///home/yahvk/ss13-chem-sim/src/styles/index.css)：全局播放/步进快捷键仅在存在模态弹窗（`[role="dialog"][aria-modal="true"]`）时暂停响应，允许固定药品详情悬浮窗时正常使用 `Space` / `←` / `→`；播放栏保持紧凑布局，仅保留按钮与时间轴控件的 `title` 与 `aria-keyshortcuts` 提示。
 - [App.tsx](file:///home/yahvk/ss13-chem-sim/src/App.tsx) 与 [RegimenPanel.tsx](file:///home/yahvk/ss13-chem-sim/src/components/RegimenPanel.tsx)：重置或从 URL 还原/导入场景时递增 `scenarioVersion` 并清空残留的 `schemeName`；清空给药、删除单张药卡、加载/单方案导入替换以及同名覆盖保存均接入全局 12 秒 Toast 撤销（点击撤销与启动从 `localStorage` 恢复均静默生效，不额外弹窗）。
 - [App.tsx](file:///home/yahvk/ss13-chem-sim/src/App.tsx)、[RegimenPanel.tsx](file:///home/yahvk/ss13-chem-sim/src/components/RegimenPanel.tsx) 与 [index.css](file:///home/yahvk/ss13-chem-sim/src/styles/index.css)：全局 Toast 升级为底部居中中性亮面 Snackbar（`bottom: 24px` 居中，窄屏 `bottom: 64px` 避让结果浮钮；常规 5 秒、可撤销 12 秒），按 `neutral / good / warn / danger` 分级（仅用左色条、前置图标与细边框区分语义，清空/重置标红、常规操作回执为中性、URL 还原为绿、损坏链接为琥珀常驻），「撤销」使用唯一高饱和实色青蓝主按钮，支持悬停/聚焦暂停倒计时与底部进度条。
+- [TimelineCharts.tsx](file:///home/yahvk/ss13-chem-sim/src/components/TimelineCharts.tsx)、[types.ts](file:///home/yahvk/ss13-chem-sim/src/engine/types.ts) 与 [simulator.ts](file:///home/yahvk/ss13-chem-sim/src/engine/simulator.ts)：在入血时记录 `SimResult.reagentEffectiveODs`（即使药物在释放同一 tick 即代谢完也能保留纯度缩放后的有效 OD），图 2 过量参考线与图例提示据此展示**有效 OD**（纯度偏离基准或全程动态变化时附注基础 OD 与区间）。
 - **验证**：`bun run test`、`bun run typecheck`、`bun run build` 均通过。

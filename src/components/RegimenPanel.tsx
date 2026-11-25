@@ -93,7 +93,6 @@ export function RegimenPanel({
   const [schemeName, setSchemeName] = useState('');
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState('');
-  const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'good' | 'warn'; text: string } | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmOverwriteId, setConfirmOverwriteId] = useState<string | null>(null);
   const prevScenarioVersionRef = useRef(scenarioVersion);
@@ -123,16 +122,9 @@ export function RegimenPanel({
     if (prevScenarioVersionRef.current === scenarioVersion) return;
     prevScenarioVersionRef.current = scenarioVersion;
     setSchemeName('');
-    setFeedbackMsg(null);
     setConfirmDeleteId(null);
     setConfirmOverwriteId(null);
   }, [scenarioVersion]);
-
-  useEffect(() => {
-    if (!feedbackMsg) return;
-    const timer = window.setTimeout(() => setFeedbackMsg(null), 3500);
-    return () => window.clearTimeout(timer);
-  }, [feedbackMsg]);
 
   useEffect(() => {
     if (!confirmDeleteId) return;
@@ -164,7 +156,6 @@ export function RegimenPanel({
     updateSavedList(list);
     setSchemeName(saved.name);
     if (isOverwrite && onNotify) {
-      setFeedbackMsg(null);
       onNotify({
         type: 'neutral',
         text: `已覆盖保存方案「${saved.name}」（共 ${saved.doses.length} 项）`,
@@ -177,7 +168,7 @@ export function RegimenPanel({
         },
       });
     } else {
-      setFeedbackMsg({ type: 'good', text: `已保存方案「${saved.name}」（共 ${saved.doses.length} 项）` });
+      onNotify?.({ type: 'good', text: `已保存方案「${saved.name}」（共 ${saved.doses.length} 项）` });
     }
   };
 
@@ -190,7 +181,7 @@ export function RegimenPanel({
     const { list, saved } = createOrUpdateSavedRegimen(savedRegimens, item.name, doses, item.id);
     updateSavedList(list);
     setConfirmOverwriteId(null);
-    setFeedbackMsg({ type: 'good', text: `已用当前给药覆盖「${saved.name}」` });
+    onNotify?.({ type: 'good', text: `已用当前给药覆盖「${saved.name}」` });
   };
 
   const handleLoadRegimen = (item: SavedRegimen) => {
@@ -199,7 +190,6 @@ export function RegimenPanel({
     onChange(cloneRegimenDoses(item.doses));
     setSchemeName(item.name);
     if (prevDoses.length > 0 && onNotify) {
-      setFeedbackMsg(null);
       onNotify({
         type: 'neutral',
         text: `已加载方案「${item.name}」`,
@@ -213,13 +203,13 @@ export function RegimenPanel({
         },
       });
     } else {
-      setFeedbackMsg({ type: 'good', text: `已加载方案「${item.name}」` });
+      onNotify?.({ type: 'good', text: `已加载方案「${item.name}」` });
     }
   };
 
   const handleAppendRegimen = (item: SavedRegimen) => {
     onChange([...doses, ...cloneRegimenDoses(item.doses)]);
-    setFeedbackMsg({ type: 'good', text: `已追加「${item.name}」的 ${item.doses.length} 项药品` });
+    onNotify?.({ type: 'good', text: `已追加「${item.name}」的 ${item.doses.length} 项药品` });
   };
 
   const handleDeleteRegimen = (item: SavedRegimen) => {
@@ -230,7 +220,7 @@ export function RegimenPanel({
     const next = savedRegimens.filter((r) => r.id !== item.id);
     updateSavedList(next);
     setConfirmDeleteId(null);
-    setFeedbackMsg({ type: 'warn', text: `已删除方案「${item.name}」` });
+    onNotify?.({ type: 'neutral', text: `已删除方案「${item.name}」` });
   };
 
   const copyJsonPayload = async (targets: SavedRegimen[], successLabel: string) => {
@@ -238,7 +228,7 @@ export function RegimenPanel({
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(json);
-        setFeedbackMsg({ type: 'good', text: successLabel });
+        onNotify?.({ type: 'good', text: successLabel });
         return;
       }
     } catch {
@@ -247,7 +237,7 @@ export function RegimenPanel({
     setSavedOpen(true);
     setImportOpen(true);
     setImportText(json);
-    setFeedbackMsg({ type: 'good', text: '已在下方文本框生成 JSON，可手动复制' });
+    onNotify?.({ type: 'neutral', text: '已在「方案存档」文本框生成 JSON，可手动复制' });
   };
 
   const handleCopyCurrentJson = () => {
@@ -268,7 +258,7 @@ export function RegimenPanel({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    setFeedbackMsg({ type: 'good', text: `已导出全部 ${savedRegimens.length} 套方案至 ss13-regimens.json` });
+    onNotify?.({ type: 'good', text: `已导出全部 ${savedRegimens.length} 套方案至 ss13-regimens.json` });
   };
 
   const plainTextPreview = useMemo(
@@ -290,13 +280,13 @@ export function RegimenPanel({
       includeDisabled: includeDisabled ?? plainTextIncludeDisabled,
     });
     if (!text) {
-      setFeedbackMsg({ type: 'warn', text: '当前没有可导出的有效给药条目' });
+      onNotify?.({ type: 'neutral', text: '当前没有可导出的有效给药条目' });
       return;
     }
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text);
-        setFeedbackMsg({
+        onNotify?.({
           type: 'good',
           text: label ? `已复制「${label}」纯文本配方` : `已复制${plainTextFormat === 'compact' ? '单行' : '多行'}纯文本配方`,
         });
@@ -306,7 +296,7 @@ export function RegimenPanel({
       // Fallback: open plain-text export drawer so user can copy manually
     }
     setPlainTextOpen(true);
-    setFeedbackMsg({ type: 'good', text: '已在「导出纯文本配方」预览框生成，可手动复制' });
+    onNotify?.({ type: 'neutral', text: '已在「导出纯文本配方」预览框生成，可手动复制' });
   };
 
   const handleDownloadPlainText = () => {
@@ -320,7 +310,7 @@ export function RegimenPanel({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    setFeedbackMsg({ type: 'good', text: '已下载纯文本配方 ss13-recipe.txt' });
+    onNotify?.({ type: 'good', text: '已下载纯文本配方 ss13-recipe.txt' });
   };
 
   const applyImportedText = (rawText: string) => {
@@ -342,7 +332,6 @@ export function RegimenPanel({
       setImportText('');
       setImportOpen(false);
       if (imported.length === 1 && prevDoses.length > 0 && onNotify) {
-        setFeedbackMsg(null);
         onNotify({
           type: 'neutral',
           text: `已导入并加载方案「${imported[0].name}」`,
@@ -356,7 +345,7 @@ export function RegimenPanel({
           },
         });
       } else {
-        setFeedbackMsg({
+        onNotify?.({
           type: 'good',
           text:
             imported.length === 1
@@ -365,8 +354,8 @@ export function RegimenPanel({
         });
       }
     } catch (err) {
-      setFeedbackMsg({
-        type: 'warn',
+      onNotify?.({
+        type: 'danger',
         text: err instanceof Error ? err.message : '导入 JSON 失败',
       });
     }
@@ -449,18 +438,58 @@ export function RegimenPanel({
   };
 
   const handleAutoPackPatches = () => {
+    const prevDoses = doses.map((d) => ({ ...d }));
     const packed = autoPackPatchGroups(doses);
-    onChange(packed);
+    const changed = packed.some((d, idx) => d.patchGroup !== doses[idx]?.patchGroup);
     const groupCount = new Set(
       packed.filter((d) => d.enabled && d.method === 'PATCH' && d.patchGroup !== undefined).map((d) => d.patchGroup),
     ).size;
-    setFeedbackMsg({
-      type: groupCount > 0 ? 'good' : 'warn',
-      text: groupCount > 0 ? `已按 ≤40u 自动生成 ${groupCount} 组合并贴片` : '未找到可自动合装至 40u 内的同时间贴片组合',
-    });
+
+    if (changed) {
+      onChange(packed);
+    }
+
+    if (changed && groupCount > 0) {
+      onNotify?.({
+        type: 'neutral',
+        text: `已按 ≤40u 自动生成 ${groupCount} 组合并贴片`,
+        durationMs: 12000,
+        action: {
+          label: '撤销',
+          onAction: () => {
+            onChange(prevDoses);
+          },
+        },
+      });
+    } else if (changed) {
+      onNotify?.({
+        type: 'neutral',
+        text: '未找到可自动合装至 40u 内的同时间贴片组合，已还原为独立贴片',
+        durationMs: 12000,
+        action: {
+          label: '撤销',
+          onAction: () => {
+            onChange(prevDoses);
+          },
+        },
+      });
+    } else if (groupCount > 0) {
+      onNotify?.({
+        type: 'neutral',
+        text: `当前已是自动合片分组（共 ${groupCount} 组）`,
+      });
+    } else {
+      onNotify?.({
+        type: 'neutral',
+        text: '未找到可自动合装至 40u 内的同时间贴片组合',
+      });
+    }
   };
 
   const dissolvePatchGroup = (groupId: number) => {
+    const affectedCount = doses.filter((d) => d.method === 'PATCH' && d.patchGroup === groupId).length;
+    if (affectedCount === 0) return;
+    const prevDoses = doses.map((d) => ({ ...d }));
     onChange(
       doses.map((d) => {
         if (d.method !== 'PATCH' || d.patchGroup !== groupId) return d;
@@ -469,9 +498,24 @@ export function RegimenPanel({
         return copy;
       }),
     );
+    onNotify?.({
+      type: 'neutral',
+      text: `已拆散合片 #${groupId}（${affectedCount} 项贴片）`,
+      durationMs: 12000,
+      action: {
+        label: '撤销',
+        onAction: () => {
+          onChange(prevDoses);
+        },
+      },
+    });
   };
 
   const dissolveAllPatchGroups = () => {
+    const affected = doses.filter((d) => d.patchGroup !== undefined);
+    if (affected.length === 0) return;
+    const groupCount = new Set(affected.map((d) => d.patchGroup)).size;
+    const prevDoses = doses.map((d) => ({ ...d }));
     onChange(
       doses.map((d) => {
         if (d.patchGroup === undefined) return d;
@@ -480,6 +524,17 @@ export function RegimenPanel({
         return copy;
       }),
     );
+    onNotify?.({
+      type: 'neutral',
+      text: `已拆散全部合片（共 ${groupCount} 组，${affected.length} 项贴片）`,
+      durationMs: 12000,
+      action: {
+        label: '撤销',
+        onAction: () => {
+          onChange(prevDoses);
+        },
+      },
+    });
   };
 
   const patchGroupSummaries = useMemo(() => {
@@ -534,20 +589,17 @@ export function RegimenPanel({
     const prevDoses = doses.map((d) => ({ ...d }));
     const label = REAGENTS[target.reagentId]?.zhName ?? target.reagentId;
     onChange(doses.filter((d) => d.id !== id));
-    if (onNotify) {
-      setFeedbackMsg(null);
-      onNotify({
-        type: 'neutral',
-        text: `已移除「${label}」`,
-        durationMs: 12000,
-        action: {
-          label: '撤销',
-          onAction: () => {
-            onChange(prevDoses);
-          },
+    onNotify?.({
+      type: 'neutral',
+      text: `已移除「${label}」`,
+      durationMs: 12000,
+      action: {
+        label: '撤销',
+        onAction: () => {
+          onChange(prevDoses);
         },
-      });
-    }
+      },
+    });
   };
 
   const handleClearDoses = () => {
@@ -556,23 +608,18 @@ export function RegimenPanel({
     const prevSchemeName = schemeName;
     onChange([]);
     setSchemeName('');
-    if (onNotify) {
-      setFeedbackMsg(null);
-      onNotify({
-        type: 'danger',
-        text: `已清空当前给药方案（共 ${prevDoses.length} 项）`,
-        durationMs: 12000,
-        action: {
-          label: '撤销',
-          onAction: () => {
-            onChange(prevDoses);
-            setSchemeName(prevSchemeName);
-          },
+    onNotify?.({
+      type: 'danger',
+      text: `已清空当前给药方案（共 ${prevDoses.length} 项）`,
+      durationMs: 12000,
+      action: {
+        label: '撤销',
+        onAction: () => {
+          onChange(prevDoses);
+          setSchemeName(prevSchemeName);
         },
-      });
-    } else {
-      setFeedbackMsg({ type: 'warn', text: '已清空当前给药方案' });
-    }
+      },
+    });
   };
 
   const preflightWarnings = useMemo(() => {
@@ -846,33 +893,6 @@ export function RegimenPanel({
           </span>
           {savedOpen ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
         </button>
-
-        {feedbackMsg && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 6,
-              padding: '5px 8px',
-              borderRadius: 6,
-              fontSize: 11,
-              background: feedbackMsg.type === 'good' ? 'var(--good-dim)' : 'var(--warn-dim)',
-              border: `1px solid ${feedbackMsg.type === 'good' ? 'rgba(34, 197, 94, 0.35)' : 'rgba(245, 158, 11, 0.4)'}`,
-              color: feedbackMsg.type === 'good' ? '#86efac' : '#fde68a',
-            }}
-          >
-            <span>{feedbackMsg.text}</span>
-            <button
-              type="button"
-              style={{ background: 'transparent', border: 'none', padding: 0, display: 'inline-flex' }}
-              onClick={() => setFeedbackMsg(null)}
-              aria-label="关闭提示"
-            >
-              <X size={12} />
-            </button>
-          </div>
-        )}
 
         {savedOpen && (
           <div id="regimen-saved-panel" className="sub-box">
@@ -1215,7 +1235,7 @@ export function RegimenPanel({
                   type="button"
                   className="btn btn-sm"
                   disabled={activePatchCount < 2}
-                  title="将同时间点且总量 ≤40u 的贴片自动合并（避开禁忌组合）"
+                  title="将同时间点且总量 ≤40u 的贴片自动合并（避开禁忌组合，支持在提示中撤销）"
                   onClick={handleAutoPackPatches}
                 >
                   自动合片 (≤40u)
@@ -1224,7 +1244,7 @@ export function RegimenPanel({
                   <button
                     type="button"
                     className="btn btn-sm"
-                    title="拆散全部合片组为独立贴片"
+                    title="拆散全部合片组为独立贴片（支持在提示中撤销）"
                     onClick={dissolveAllPatchGroups}
                   >
                     全部拆片
@@ -1235,19 +1255,23 @@ export function RegimenPanel({
             {patchGroupSummaries.length > 0 && (
               <div className="quick-chips">
                 {patchGroupSummaries.map((g) => (
-                  <button
+                  <span
                     key={g.groupId}
-                    type="button"
-                    className={`tag-chip ${g.hasIncompatible ? 'danger' : g.overCap ? 'warn' : 'good'}`}
-                    style={{ cursor: 'pointer' }}
-                    title={`点击拆散合片 #${g.groupId}`}
-                    onClick={() => dissolvePatchGroup(g.groupId)}
+                    className={`tag-chip patch-group-chip ${g.hasIncompatible ? 'danger' : g.overCap ? 'warn' : 'good'}`}
                   >
                     <span className="mono">
                       合片 #{g.groupId} · {Number(g.totalVol.toFixed(1))}/{PATCH_MAX_VOLUME}u · {g.activeCount}药
                     </span>
-                    <X size={10} />
-                  </button>
+                    <button
+                      type="button"
+                      className="patch-group-dissolve-btn"
+                      title={`拆散合片 #${g.groupId}（支持在提示中撤销）`}
+                      aria-label={`拆散合片 #${g.groupId}`}
+                      onClick={() => dissolvePatchGroup(g.groupId)}
+                    >
+                      <X size={11} aria-hidden="true" />
+                    </button>
+                  </span>
                 ))}
               </div>
             )}

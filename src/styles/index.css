@@ -1730,6 +1730,33 @@ fieldset.sub-box {
   gap: 6px;
 }
 
+.patch-group-chip {
+  padding-right: 3px;
+  gap: 5px;
+}
+
+.patch-group-dissolve-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  opacity: 0.85;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.14s, opacity 0.14s;
+}
+
+.patch-group-dissolve-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  opacity: 1;
+}
+
 .dose-name-btn {
   display: flex;
   align-items: center;

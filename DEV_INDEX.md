@@ -288,6 +288,7 @@
 - [TimelineCharts.tsx](file:///home/yahvk/ss13-chem-sim/src/components/TimelineCharts.tsx)：全局 `Space` 播放/暂停快捷键排除按钮、链接、摘要与交互角色聚焦态，避免聚焦事件日志等控件按 `Space` 时误触发播放。
 - **验证**：`bun run test`、`bun run typecheck`、`bun run build` 均通过。
 
-### 2026-11-26 — UI/UX 交互整改（#1 URL 自动同步）
+### 2026-11-26 — UI/UX 交互整改（#1 URL 自动同步、#3 快捷键隔离与播放栏精简）
 - [scenarioShare.ts](file:///home/yahvk/ss13-chem-sim/src/engine/scenarioShare.ts)、[App.tsx](file:///home/yahvk/ss13-chem-sim/src/App.tsx)、[HeaderBar.tsx](file:///home/yahvk/ss13-chem-sim/src/components/HeaderBar.tsx) 与 [scenarioStorage.test.ts](file:///home/yahvk/ss13-chem-sim/src/engine/__tests__/scenarioStorage.test.ts)：新增 `BLANK_SCENARIO_PAYLOAD` 与 `getScenarioHistoryUrl`，编辑场景时随 400ms 防抖与 `pagehide`/`visibilitychange` 自动通过 `history.replaceState` 同步 `#s=...`（空白场景清除 Hash，损坏链接在未编辑前保留提示与原 Hash），解决分享后继续编辑刷新丢失修改的问题。
+- [TimelineCharts.tsx](file:///home/yahvk/ss13-chem-sim/src/components/TimelineCharts.tsx) 与 [index.css](file:///home/yahvk/ss13-chem-sim/src/styles/index.css)：全局播放/步进快捷键仅在存在模态弹窗（`[role="dialog"][aria-modal="true"]`）时暂停响应，允许固定药品详情悬浮窗时正常使用 `Space` / `←` / `→`；播放栏保持紧凑布局，仅保留按钮与时间轴控件的 `title` 与 `aria-keyshortcuts` 提示。
 - **验证**：`bun run test`、`bun run typecheck`、`bun run build` 均通过。

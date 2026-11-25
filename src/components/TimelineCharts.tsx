@@ -222,7 +222,7 @@ export function TimelineCharts({
       ) {
         return;
       }
-      if (document.querySelector('[role="dialog"]')) return;
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
 
       if (e.code === 'Space') {
         if (
@@ -509,13 +509,6 @@ export function TimelineCharts({
           />
           <span className="mono" style={{ fontSize: 12, fontWeight: 600 }}>
             t = {selectedTime}s <span style={{ color: 'var(--text-muted)' }}>(Tick {selectedTime / 2})</span>
-          </span>
-          <span
-            className="dose-sub chart-shortcuts-hint"
-            title="在非输入框/弹窗状态下支持全局键盘快捷键"
-          >
-            快捷键: <kbd className="kbd-key">Space</kbd> 播放/暂停 ·{' '}
-            <kbd className="kbd-key">←</kbd>/<kbd className="kbd-key">→</kbd> 步进 2s
           </span>
         </div>
       </div>

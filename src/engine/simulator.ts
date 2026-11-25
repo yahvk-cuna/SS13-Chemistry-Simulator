@@ -1,4 +1,6 @@
 import {
+  AUTO_MIN_DURATION_SECONDS,
+  AUTO_TAIL_TICKS,
   BLOOD_REGEN_FACTOR,
   BLOOD_VOLUME_NORMAL,
   BLOOD_VOLUME_OKAY,
@@ -24,6 +26,7 @@ import {
   HEALTH_THRESHOLD_DEAD,
   HEALTH_THRESHOLD_FULLCRIT,
   LIVER_PRESETS,
+  MAX_DURATION_SECONDS,
   MAX_HEALTH,
   MAX_STAMINA,
   PATCH_TRANSFER_PER_TICK,
@@ -56,6 +59,7 @@ import type {
   SimMutableState,
   SimOptions,
   SimResult,
+  SimStopReason,
   SimSummary,
   TickSnapshot,
 } from './types';
@@ -323,7 +327,11 @@ export function runSimulation(
   options: SimOptions,
 ): SimResult {
   const dt = SSMOBS_DT;
-  const totalTicks = Math.max(1, Math.floor(options.durationSeconds / dt));
+  const isAutoDuration = options.durationSeconds <= 0;
+  const effectiveCapSeconds = isAutoDuration
+    ? clamp(options.maxDurationSeconds ?? MAX_DURATION_SECONDS, AUTO_MIN_DURATION_SECONDS, MAX_DURATION_SECONDS)
+    : clamp(options.durationSeconds, dt, MAX_DURATION_SECONDS);
+  const maxTicks = Math.max(1, Math.floor(effectiveCapSeconds / dt));
   const rng = createRng(options.seed);
   const state = createInitialState(patient);
   const events: SimEvent[] = [];
@@ -649,7 +657,94 @@ export function runSimulation(
     'stomach',
   ];
 
-  for (let tick = 1; tick <= totalTicks; tick++) {
+  function evaluateAutoStopState(coreTempDelta: number): 'steady' | 'dead' | null {
+    // 1. Drug & delivery activity precondition
+    if (firedPatchGroups.size < sortedPatchGroupIds.length) return null;
+    if (firedDoseIds.size < standaloneDoses.length) return null;
+    if (state.activeTransfers.some((tr) => tr.method !== 'PATCH' || !state.inStasis)) return null;
+    if (
+      !state.inStasis &&
+      state.stat !== 'DEAD' &&
+      !state.organs.stomach.failing &&
+      state.stomach.some(
+        (r) => r.volume >= CHEMICAL_VOLUME_ROUNDING && (REAGENTS[r.id]?.metabolizationRate ?? 0) > 0,
+      )
+    ) {
+      return null;
+    }
+    if (state.delayedReviveTicks !== null) return null;
+
+    if (state.inStasis) {
+      if (state.blood.some((r) => r.volume >= CHEMICAL_VOLUME_ROUNDING && Boolean(REAGENTS[r.id]?.ignoreStasis))) {
+        return null;
+      }
+    } else if (state.stat === 'DEAD') {
+      if (state.blood.some((r) => r.volume >= CHEMICAL_VOLUME_ROUNDING && Boolean(REAGENTS[r.id]?.deadProcess))) {
+        return null;
+      }
+    } else {
+      const curLiverless = state.liverType === 'none' || state.organs.liver.failing;
+      const hasEpi =
+        (state.blood.find((r) => r.id === 'epinephrine')?.volume ?? 0) >= CHEMICAL_VOLUME_ROUNDING;
+      const hasActiveBloodReagent = state.blood.some((inst) => {
+        if (inst.volume < CHEMICAL_VOLUME_ROUNDING) return false;
+        const def = REAGENTS[inst.id];
+        if (!def) return false;
+        return !curLiverless || Boolean(def.selfConsuming) || (allergySet.has(inst.id) && !hasEpi);
+      });
+      if (hasActiveBloodReagent) return null;
+    }
+
+    // 2. Deterministic physiological steady-state check
+    if (state.inStasis) {
+      return state.stamina <= 0 && !state.stamcrit ? 'steady' : null;
+    }
+    if (state.stat === 'DEAD') {
+      return 'dead';
+    }
+
+    if (state.stat !== 'STABLE') return null;
+    if ((state.liverType === 'none' || state.organs.liver.failing) && !state.traits.has('TRAIT_STABLELIVER')) {
+      return null;
+    }
+    if ((state.heartAttack || state.organs.heart.failing) && !state.traits.has('TRAIT_STABLEHEART')) {
+      return null;
+    }
+    if (state.organs.lungs.failing) return null;
+    if (state.oxy > 0 || state.losebreath >= 1 || state.failedLastBreath || state.environment === 'vacuum') {
+      return null;
+    }
+    if (state.bleedFlow > 0) return null;
+    if (roundStep(0.01 * (BLOOD_VOLUME_NORMAL - state.effectiveBloodVolume), 0.25) > 0) return null;
+    if (state.onFire) return null;
+    if (state.environment !== 'cryo') {
+      if (state.coreTemp > BODYTEMP_HEAT_DAMAGE_LIMIT || state.coreTemp < BODYTEMP_COLD_DAMAGE_LIMIT) {
+        return null;
+      }
+      if (
+        (state.ambientTemp > BODYTEMP_HEAT_DAMAGE_LIMIT || state.bodyTemp > BODYTEMP_HEAT_DAMAGE_LIMIT) &&
+        coreTempDelta > 0.05
+      ) {
+        return null;
+      }
+      if (
+        (state.ambientTemp < BODYTEMP_COLD_DAMAGE_LIMIT || state.bodyTemp < BODYTEMP_COLD_DAMAGE_LIMIT) &&
+        coreTempDelta < -0.05
+      ) {
+        return null;
+      }
+    }
+    if (state.irradiated && !state.traits.has('TRAIT_HALT_RADIATION_EFFECTS')) return null;
+    if (state.stamina > 0 || state.stamcrit) return null;
+
+    return 'steady';
+  }
+
+  let stopReason: SimStopReason | null = null;
+  let lastSteadyKind: 'steady' | 'dead' | null = null;
+  let steadyStreak = 0;
+
+  for (let tick = 1; tick <= maxTicks; tick++) {
     const time = tick * dt;
     ctx.tick = tick;
     ctx.time = time;
@@ -1250,6 +1345,7 @@ export function runSimulation(
     }
 
     // 9. Body & Core Temperature (_species.dm:1061-1271)
+    const prevCoreTemp = state.coreTemp;
     if (state.environment === 'cryo') {
       // Cryo cell regulates body temperature toward cryo ambient temp without freezing damage
       state.bodyTemp += (state.ambientTemp - state.bodyTemp) * 0.45;
@@ -1290,6 +1386,7 @@ export function runSimulation(
         }
       }
     }
+    const coreTempDelta = state.coreTemp - prevCoreTemp;
 
     // 10. Radiation ongoing damage (halted by Potassium Iodide / Pentetic Acid)
     if (!state.inStasis && state.stat !== 'DEAD' && state.irradiated && !state.traits.has('TRAIT_HALT_RADIATION_EFFECTS')) {
@@ -1354,6 +1451,21 @@ export function runSimulation(
         stateById: tickAllergyStateById,
       }),
     );
+
+    if (isAutoDuration) {
+      const kind = evaluateAutoStopState(coreTempDelta);
+      if (kind !== null) {
+        steadyStreak = kind === lastSteadyKind ? steadyStreak + 1 : 1;
+        lastSteadyKind = kind;
+        if (time >= AUTO_MIN_DURATION_SECONDS && steadyStreak >= AUTO_TAIL_TICKS + 1) {
+          stopReason = kind;
+          break;
+        }
+      } else {
+        lastSteadyKind = null;
+        steadyStreak = 0;
+      }
+    }
   }
 
   const first = snapshots[0];
@@ -1400,12 +1512,16 @@ export function runSimulation(
     }
   }
 
+  const finalStopReason: SimStopReason = isAutoDuration ? (stopReason ?? 'max_cap') : 'fixed';
+
   const summary: SimSummary = {
     initialHealth: first.health,
     finalHealth: last.health,
     minHealth,
     maxHealth,
     finalStat: last.stat,
+    actualDurationSeconds: last.time,
+    stopReason: finalStopReason,
     deathTime,
     fullHealTime,
     critDuration,

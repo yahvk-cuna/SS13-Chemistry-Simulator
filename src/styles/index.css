@@ -193,6 +193,31 @@ select:focus-visible {
   white-space: nowrap;
 }
 
+.duration-status-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  background: rgba(56, 189, 248, 0.14);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: #bae6fd;
+  white-space: nowrap;
+}
+
+.duration-status-tag.warn {
+  background: var(--warn-dim);
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #fde68a;
+}
+
+.duration-status-tag.danger {
+  background: var(--danger-dim);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #fecaca;
+}
+
 select.ui-select,
 input.ui-input,
 textarea.ui-input {

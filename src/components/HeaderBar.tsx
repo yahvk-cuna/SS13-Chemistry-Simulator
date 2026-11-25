@@ -1,10 +1,17 @@
 import { BookOpen, Dices, FlaskConical, Info, Link2, Pin, PinOff, RotateCcw } from 'lucide-react';
-import { SCENARIO_DURATIONS } from '../engine/scenarioShare';
-import type { RngMode } from '../engine/types';
+import { useEffect, useState } from 'react';
+import {
+  DEFAULT_FIXED_DURATION_SECONDS,
+  MAX_DURATION_SECONDS,
+  MIN_FIXED_DURATION_SECONDS,
+} from '../engine/constants';
+import type { RngMode, SimStopReason } from '../engine/types';
 import { NumericInput } from './NumericInput';
 
 interface HeaderBarProps {
   durationSeconds: number;
+  actualDurationSeconds: number;
+  stopReason: SimStopReason;
   onDurationChange: (sec: number) => void;
   rngMode: RngMode;
   onRngModeChange: (mode: RngMode) => void;
@@ -21,6 +28,8 @@ interface HeaderBarProps {
 
 export function HeaderBar({
   durationSeconds,
+  actualDurationSeconds,
+  stopReason,
   onDurationChange,
   rngMode,
   onRngModeChange,
@@ -34,9 +43,31 @@ export function HeaderBar({
   onOpenHandbook,
   onOpenAbout,
 }: HeaderBarProps) {
-  const durationOptions = SCENARIO_DURATIONS.includes(durationSeconds as (typeof SCENARIO_DURATIONS)[number])
-    ? [...SCENARIO_DURATIONS]
-    : [...SCENARIO_DURATIONS, durationSeconds].sort((a, b) => a - b);
+  const isAuto = durationSeconds <= 0;
+  const [lastFixedDuration, setLastFixedDuration] = useState<number>(
+    durationSeconds > 0 ? durationSeconds : DEFAULT_FIXED_DURATION_SECONDS,
+  );
+
+  useEffect(() => {
+    if (durationSeconds > 0) {
+      setLastFixedDuration(durationSeconds);
+    }
+  }, [durationSeconds]);
+
+  const stopLabel =
+    stopReason === 'dead' ? '死亡终止' : stopReason === 'max_cap' ? '达上限' : '已稳定';
+  const stopTagClass =
+    stopReason === 'dead'
+      ? 'duration-status-tag danger mono'
+      : stopReason === 'max_cap'
+        ? 'duration-status-tag warn mono'
+        : 'duration-status-tag mono';
+  const stopTitle =
+    stopReason === 'dead'
+      ? `自动模拟于 ${actualDurationSeconds}s 确认患者死亡并终止`
+      : stopReason === 'max_cap'
+        ? `自动模拟已达到 ${MAX_DURATION_SECONDS}s 安全上限（仍未完全稳定）`
+        : `自动模拟于 ${actualDurationSeconds}s 达到生理稳态并结束`;
 
   return (
     <header className="header-bar">
@@ -55,18 +86,59 @@ export function HeaderBar({
       <div className="header-controls">
         <div className="control-group">
           <span className="control-label">模拟时长</span>
-          <select
-            className="ui-select mono"
-            value={durationSeconds}
-            onChange={(e) => onDurationChange(Number(e.target.value))}
-            aria-label="模拟时长"
-          >
-            {durationOptions.map((d) => (
-              <option key={d} value={d}>
-                {d}s ({d / 2} ticks)
-              </option>
-            ))}
-          </select>
+          <div className="seg-toggle" role="group" aria-label="模拟时长模式">
+            <button
+              type="button"
+              className={`seg-btn ${isAuto ? 'active' : ''}`}
+              aria-pressed={isAuto}
+              title="自动运行至药物耗尽且生理稳态（或死亡），最长 1800s"
+              onClick={() => {
+                if (!isAuto) onDurationChange(0);
+              }}
+            >
+              自动
+            </button>
+            <button
+              type="button"
+              className={`seg-btn ${!isAuto ? 'active' : ''}`}
+              aria-pressed={!isAuto}
+              title={`固定模拟时长（${MIN_FIXED_DURATION_SECONDS}–${MAX_DURATION_SECONDS}s）`}
+              onClick={() => {
+                if (isAuto) onDurationChange(lastFixedDuration);
+              }}
+            >
+              固定
+            </button>
+          </div>
+          {isAuto ? (
+            <span className={stopTagClass} title={stopTitle} aria-live="polite" aria-atomic="true">
+              {actualDurationSeconds}s · {stopLabel}
+            </span>
+          ) : (
+            <>
+              <NumericInput
+                className="ui-input mono"
+                style={{ width: 68 }}
+                min={MIN_FIXED_DURATION_SECONDS}
+                max={MAX_DURATION_SECONDS}
+                step={2}
+                integer
+                fallback={DEFAULT_FIXED_DURATION_SECONDS}
+                value={durationSeconds}
+                onCommit={(v) =>
+                  onDurationChange(
+                    Math.min(
+                      MAX_DURATION_SECONDS,
+                      Math.max(MIN_FIXED_DURATION_SECONDS, Math.round(v / 2) * 2),
+                    ),
+                  )
+                }
+                ariaLabel="固定模拟时长（秒）"
+                title={`固定模拟时长（${MIN_FIXED_DURATION_SECONDS}–${MAX_DURATION_SECONDS}s，步进 2s）`}
+              />
+              <span className="control-label mono">s</span>
+            </>
+          )}
         </div>
 
         <div className="control-group">

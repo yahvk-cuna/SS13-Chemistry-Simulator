@@ -251,13 +251,19 @@ describe('Tianguan13 Pharmacology Simulator', () => {
 
     const blank = createBlankScenario();
     const blankPayload = encodeScenarioPayload(blank);
-    expect(blankPayload).toBe('AQ');
+    expect(blankPayload).toBe('Ag');
     expect(blankPayload.length).toBeLessThanOrEqual(4);
     const decodedBlank = decodeScenarioPayload(blankPayload);
     expect(decodedBlank.patient).toEqual(blank.patient);
     expect(decodedBlank.doses).toEqual([]);
-    expect(decodedBlank.durationSeconds).toBe(180);
+    expect(decodedBlank.durationSeconds).toBe(0);
     expect(decodedBlank.rngMode).toBe('expected');
+
+    // Legacy v1 blank payload ('AQ') still decodes cleanly to 180s fixed duration
+    const decodedLegacyBlank = decodeScenarioPayload('AQ');
+    expect(decodedLegacyBlank.patient).toEqual(blank.patient);
+    expect(decodedLegacyBlank.doses).toEqual([]);
+    expect(decodedLegacyBlank.durationSeconds).toBe(180);
 
     const typical: SimScenario = {
       patient: makeBasePatient({ brute: 55, burn: 45, tox: 20, oxy: 15 }),
@@ -746,5 +752,97 @@ describe('Tianguan13 Pharmacology Simulator', () => {
       minOd: 18.75,
       maxOd: 18.75,
     });
+  });
+
+  it('auto-stops blank scenarios at minimum 30s with steady stopReason', () => {
+    const res = runSimulation(makeBasePatient(), [], {
+      durationSeconds: 0,
+      rngMode: 'expected',
+      seed: 1,
+    });
+    expect(res.summary.stopReason).toBe('steady');
+    expect(res.summary.actualDurationSeconds).toBe(30);
+    expect(res.snapshots[res.snapshots.length - 1]?.time).toBe(30);
+  });
+
+  it('auto-stops shortly after drug depletion without waiting for slow organ passive healing', () => {
+    // 10u Libital at 75% purity metabolizes at 0.2u/tick -> 50 ticks (100s), plus 10s tail = 110s
+    const res = runSimulation(
+      makeBasePatient({
+        brute: 40,
+        organs: { liver: 50, heart: 0, lungs: 0, stomach: 0, brain: 0, eyes: 0, ears: 0 },
+      }),
+      [dose('libital', 10, { purity: 0.75 })],
+      { durationSeconds: 0, rngMode: 'expected', seed: 1 },
+    );
+    expect(res.summary.stopReason).toBe('steady');
+    expect(res.summary.actualDurationSeconds).toBe(110);
+    // Organ passive healing is still ongoing (liver damage > 0), yet auto mode does not drag out to 2000s
+    const last = res.snapshots[res.snapshots.length - 1];
+    expect(last.organs.liver.damage).toBeGreaterThan(0);
+    expect(last.bloodReagents).toEqual([]);
+  });
+
+  it('continues auto simulation past drug depletion for post-drug fatal deterioration and stops as dead', () => {
+    // Failing heart stabilized only briefly by 2u Higadrite (wait: Higadrite grants STABLELIVER, not STABLEHEART; use atropine/penthrite? No, failing heart triggers cardiac arrest at step 6 after drug or even during; test failing liver with 0.8u Higadrite -> 2 ticks = 4s)
+    const res = runSimulation(
+      makeBasePatient({
+        tox: 40,
+        organs: { liver: 100, heart: 0, lungs: 0, stomach: 0, brain: 0, eyes: 0, ears: 0 },
+      }),
+      [dose('higadrite', 0.8, { purity: 1.0 })],
+      { durationSeconds: 0, rngMode: 'expected', seed: 1 },
+    );
+    expect(res.summary.stopReason).toBe('dead');
+    expect(res.summary.finalStat).toBe('DEAD');
+    expect(res.summary.deathTime).not.toBeNull();
+    expect(res.summary.actualDurationSeconds).toBeGreaterThan(res.summary.deathTime!);
+  });
+
+  it('continues auto simulation past drug depletion for natural oxy/stamina recovery and delayed doses', () => {
+    // Delayed dose at t=40s + oxy recovery after drug depletion
+    const res = runSimulation(
+      makeBasePatient({ oxy: 35, stamina: 50 }),
+      [dose('salbutamol', 2, { startTime: 40, purity: 1.0 })],
+      { durationSeconds: 0, rngMode: 'expected', seed: 1 },
+    );
+    expect(res.summary.stopReason).toBe('steady');
+    expect(res.summary.actualDurationSeconds).toBeGreaterThan(40);
+    const last = res.snapshots[res.snapshots.length - 1];
+    expect(last.oxy).toBe(0);
+    expect(last.stamina).toBe(0);
+  });
+
+  it('stops auto simulation at maxDurationSeconds cap with max_cap stopReason when non-convergent', () => {
+    const res = runSimulation(
+      makeBasePatient({ irradiated: true }),
+      [],
+      { durationSeconds: 0, maxDurationSeconds: 120, rngMode: 'expected', seed: 1 },
+    );
+    expect(res.summary.stopReason).toBe('max_cap');
+    expect(res.summary.actualDurationSeconds).toBe(120);
+  });
+
+  it('round-trips auto (0), extended fixed duration (1200s), and extended startTime (900s) in share URLs', () => {
+    const scenario: SimScenario = {
+      patient: makeBasePatient({ brute: 25 }),
+      doses: [dose('libital', 10, { startTime: 900, purity: 1.0 })],
+      durationSeconds: 1200,
+      rngMode: 'expected',
+      seed: 42,
+    };
+    const decoded = decodeScenarioPayload(encodeScenarioPayload(scenario));
+    expect(decoded.durationSeconds).toBe(1200);
+    expect(decoded.doses[0].startTime).toBe(900);
+
+    const autoScenario: SimScenario = {
+      patient: makeBasePatient({ burn: 20 }),
+      doses: [dose('lenturi', 10, { purity: 1.0 })],
+      durationSeconds: 0,
+      rngMode: 'expected',
+      seed: 42,
+    };
+    const decodedAuto = decodeScenarioPayload(encodeScenarioPayload(autoScenario));
+    expect(decodedAuto.durationSeconds).toBe(0);
   });
 });

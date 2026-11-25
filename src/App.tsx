@@ -159,6 +159,7 @@ export function App() {
     () => runSimulation(patient, doses, { durationSeconds, rngMode, seed }),
     [patient, doses, durationSeconds, rngMode, seed],
   );
+  const actualDurationSeconds = result.summary.actualDurationSeconds;
 
   // Debounced auto-save to localStorage and URL hash sync on scenario changes
   useEffect(() => {
@@ -228,10 +229,10 @@ export function App() {
 
   // Clamp selectedTime when duration shrinks
   useEffect(() => {
-    if (selectedTime > durationSeconds) {
-      setSelectedTime(durationSeconds);
+    if (selectedTime > actualDurationSeconds) {
+      setSelectedTime(actualDurationSeconds);
     }
-  }, [durationSeconds, selectedTime]);
+  }, [actualDurationSeconds, selectedTime]);
 
   // Playback timer
   useEffect(() => {
@@ -239,15 +240,15 @@ export function App() {
     const intervalMs = Math.max(40, Math.round(500 / playSpeed));
     const timer = window.setInterval(() => {
       setSelectedTime((prev) => {
-        if (prev + 2 > durationSeconds) {
+        if (prev + 2 > actualDurationSeconds) {
           setIsPlaying(false);
-          return durationSeconds;
+          return actualDurationSeconds;
         }
         return prev + 2;
       });
     }, intervalMs);
     return () => window.clearInterval(timer);
-  }, [isPlaying, playSpeed, durationSeconds]);
+  }, [isPlaying, playSpeed, actualDurationSeconds]);
 
   const applyScenario = (scenario: SimScenario) => {
     setPatient(clonePatient(scenario.patient));
@@ -306,7 +307,7 @@ export function App() {
     replaceScenarioWithUndo(scenario, {
       nextUrl,
       noticeType: 'neutral',
-      noticeText: `已从链接导入场景（${scenario.doses.length} 项给药，${scenario.durationSeconds}s）`,
+      noticeText: `已从链接导入场景（${scenario.doses.length} 项给药，${scenario.durationSeconds <= 0 ? '自动' : `${scenario.durationSeconds}s`}）`,
     });
   };
 
@@ -340,15 +341,17 @@ export function App() {
   const baselineLabel = useMemo(() => {
     if (!baselineResult) return null;
     const baseDuration =
-      baselineResult.snapshots[baselineResult.snapshots.length - 1]?.time ?? durationSeconds;
+      baselineResult.snapshots[baselineResult.snapshots.length - 1]?.time ?? actualDurationSeconds;
     const statLabel = MOB_STAT_ZH[baselineResult.summary.finalStat];
     return `基准：HP ${baselineResult.summary.finalHealth.toFixed(1)} · ${statLabel} · ${baseDuration}s`;
-  }, [baselineResult, durationSeconds]);
+  }, [baselineResult, actualDurationSeconds]);
 
   return (
     <div className="app-shell">
       <HeaderBar
         durationSeconds={durationSeconds}
+        actualDurationSeconds={actualDurationSeconds}
+        stopReason={result.summary.stopReason}
         onDurationChange={setDurationSeconds}
         rngMode={rngMode}
         onRngModeChange={setRngMode}
@@ -404,7 +407,7 @@ export function App() {
             }}
             isPlaying={isPlaying}
             onTogglePlay={() => {
-              if (!isPlaying && selectedTime >= durationSeconds) setSelectedTime(0);
+              if (!isPlaying && selectedTime >= actualDurationSeconds) setSelectedTime(0);
               setIsPlaying((v) => !v);
             }}
             playSpeed={playSpeed}

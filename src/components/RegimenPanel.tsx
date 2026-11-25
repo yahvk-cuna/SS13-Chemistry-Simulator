@@ -16,7 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { PATCH_MAX_VOLUME, PATCH_TRANSFER_PER_TICK } from '../engine/constants';
+import { MAX_DURATION_SECONDS, PATCH_MAX_VOLUME, PATCH_TRANSFER_PER_TICK } from '../engine/constants';
 import { NumericInput } from './NumericInput';
 import { ReagentFloat } from './ReagentFloat';
 import {
@@ -1439,7 +1439,7 @@ export function RegimenPanel({
                         className="ui-input mono"
                         style={{ width: '100%' }}
                         min={0}
-                        max={600}
+                        max={MAX_DURATION_SECONDS}
                         step={2}
                         integer
                         fallback={0}

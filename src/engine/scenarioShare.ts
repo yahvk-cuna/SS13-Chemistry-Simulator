@@ -1,4 +1,12 @@
-import { BLOOD_VOLUME_NORMAL, BODYTEMP_NORMAL, LIVER_PRESETS, clamp } from './constants';
+import {
+  BLOOD_VOLUME_NORMAL,
+  BODYTEMP_NORMAL,
+  DEFAULT_FIXED_DURATION_SECONDS,
+  LIVER_PRESETS,
+  MAX_DURATION_SECONDS,
+  MIN_FIXED_DURATION_SECONDS,
+  clamp,
+} from './constants';
 import { REAGENTS } from './reagents';
 import { sanitizeDoseEvent } from './regimenStorage';
 import type {
@@ -13,13 +21,14 @@ import type {
   WoundSeverity,
 } from './types';
 
-export const DEFAULT_DURATION_SECONDS = 180;
+export const DEFAULT_DURATION_SECONDS = 0;
 export const DEFAULT_RNG_MODE: RngMode = 'expected';
 export const DEFAULT_SEED = 42;
 export const SCENARIO_HASH_KEY = 's';
-export const SCENARIO_DURATIONS = [60, 120, 180, 300, 600] as const;
 
-const BINARY_FORMAT_VERSION = 1;
+const BINARY_FORMAT_VERSION = 2;
+const LEGACY_BINARY_FORMAT_VERSION = 1;
+const LEGACY_DEFAULT_DURATION_SECONDS = DEFAULT_FIXED_DURATION_SECONDS;
 
 /**
  * Append-only stable reagent ID table for compact binary URL sharing.
@@ -571,7 +580,7 @@ function writeDoses(writer: ByteWriter, validDoses: { dose: DoseEvent; reagentId
   writer.writeVarUint(validDoses.length);
   for (const { dose: d, reagentIdx } of validDoses) {
     const methodIdx = Math.max(0, METHOD_ORDER.indexOf(d.method));
-    const st = Math.round(clamp(d.startTime, 0, 600));
+    const st = Math.round(clamp(d.startTime, 0, MAX_DURATION_SECONDS));
     const purPct = Math.round(clamp(d.purity, 0.05, 1) * 100);
     const tm = Math.round(clamp(d.temp, 5, 1200));
     const iv = Number(clamp(d.ivRate, 0.5, 20).toFixed(2));
@@ -687,7 +696,10 @@ export function encodeScenarioPayload(scenario: SimScenario): string {
     }
   }
 
-  const dur = Math.round(clamp(scenario.durationSeconds, 10, 600));
+  const dur =
+    scenario.durationSeconds <= 0
+      ? 0
+      : Math.round(clamp(scenario.durationSeconds, MIN_FIXED_DURATION_SECONDS, MAX_DURATION_SECONDS));
   const hasCustomDuration = dur !== DEFAULT_DURATION_SECONDS;
   const isRandomMode = scenario.rngMode === 'random';
   const seed = Math.max(1, Math.round(scenario.seed || DEFAULT_SEED));
@@ -723,7 +735,7 @@ export function decodeScenarioPayload(payload: string): SimScenario {
   const header = reader.readU8();
 
   const version = header & 0b111;
-  if (version !== BINARY_FORMAT_VERSION) {
+  if (version !== BINARY_FORMAT_VERSION && version !== LEGACY_BINARY_FORMAT_VERSION) {
     throw new Error('不支持的场景链接版本或格式。');
   }
 
@@ -737,9 +749,19 @@ export function decodeScenarioPayload(payload: string): SimScenario {
     throw new Error('分享链接随机种子标志位无效，无法解析场景。');
   }
 
-  const durationSeconds = hasCustomDuration
-    ? Math.round(clamp(reader.readVarUint(), 10, 600))
-    : DEFAULT_DURATION_SECONDS;
+  let durationSeconds: number;
+  if (hasCustomDuration) {
+    const rawDuration = reader.readVarUint();
+    durationSeconds =
+      rawDuration === 0
+        ? 0
+        : Math.round(clamp(rawDuration, MIN_FIXED_DURATION_SECONDS, MAX_DURATION_SECONDS));
+  } else {
+    durationSeconds =
+      version === LEGACY_BINARY_FORMAT_VERSION
+        ? LEGACY_DEFAULT_DURATION_SECONDS
+        : DEFAULT_DURATION_SECONDS;
+  }
   const rngMode: RngMode = isRandomMode ? 'random' : DEFAULT_RNG_MODE;
   const seed = hasCustomSeed ? Math.max(1, reader.readVarUint()) : DEFAULT_SEED;
   const patient = hasPatient ? readPatient(reader) : makeBasePatient();

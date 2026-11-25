@@ -1,4 +1,4 @@
-import { PATCH_MAX_VOLUME, PILL_MAX_VOLUME, clamp } from './constants';
+import { MAX_DURATION_SECONDS, PATCH_MAX_VOLUME, PILL_MAX_VOLUME, clamp } from './constants';
 import { REAGENTS } from './reagents';
 import type { DeliveryMethod, DoseEvent, ReagentDef, SavedRegimen } from './types';
 
@@ -81,7 +81,7 @@ export function sanitizeDoseEvent(raw: unknown, idx = 0): DoseEvent | null {
     reagentId,
     volume: Number(clamp(volumeNum, 0.1, 500).toFixed(2)),
     method,
-    startTime: Math.round(clamp(startTimeNum, 0, 600)),
+    startTime: Math.round(clamp(startTimeNum, 0, MAX_DURATION_SECONDS)),
     purity: Number(clamp(purityNum, 0.05, 1).toFixed(2)),
     temp: Math.round(clamp(tempNum, 5, 1200)),
     ivRate: Number(clamp(ivRateNum, 0.5, 20).toFixed(2)),
@@ -271,7 +271,7 @@ export function autoPackPatchGroups(doses: DoseEvent[]): DoseEvent[] {
   const patchIndicesByTime = new Map<number, number[]>();
   doses.forEach((d, idx) => {
     if (!d.enabled || d.method !== 'PATCH' || d.volume <= 0 || !REAGENTS[d.reagentId]) return;
-    const t = Math.round(clamp(d.startTime, 0, 600));
+    const t = Math.round(clamp(d.startTime, 0, MAX_DURATION_SECONDS));
     const list = patchIndicesByTime.get(t) ?? [];
     list.push(idx);
     patchIndicesByTime.set(t, list);

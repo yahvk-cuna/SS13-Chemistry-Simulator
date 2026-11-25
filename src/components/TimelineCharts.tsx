@@ -494,7 +494,18 @@ export function TimelineCharts({
   }, [bottomTab, snapshots, summary.worstOrgan]);
 
   const timeTicks = useMemo(() => {
-    const step = maxTime <= 90 ? 10 : maxTime <= 240 ? 30 : 60;
+    const step =
+      maxTime <= 40
+        ? 6
+        : maxTime <= 90
+          ? 10
+          : maxTime <= 240
+            ? 30
+            : maxTime <= 600
+              ? 60
+              : maxTime <= 1200
+                ? 120
+                : 180;
     const arr: number[] = [];
     for (let t = 0; t <= maxTime; t += step) arr.push(t);
     return arr;
@@ -553,7 +564,7 @@ export function TimelineCharts({
             onChange={(e) => onSelectTime(Number(e.target.value))}
           />
           <span className="mono" style={{ fontSize: 12, fontWeight: 600 }}>
-            t = {selectedTime}s <span style={{ color: 'var(--text-muted)' }}>(Tick {selectedTime / 2})</span>
+            t = {selectedTime}s / {maxTime}s <span style={{ color: 'var(--text-muted)' }}>(Tick {selectedTime / 2})</span>
           </span>
         </div>
       </div>
@@ -680,7 +691,9 @@ export function TimelineCharts({
                 strokeWidth="1.8"
                 strokeDasharray="5 4"
                 points={buildPolyline(
-                  baselineResult.snapshots.map((s) => [xOf(s.time), y1Of(s.health)]),
+                  baselineResult.snapshots
+                    .filter((s) => s.time <= maxTime)
+                    .map((s) => [xOf(s.time), y1Of(s.health)]),
                 )}
               />
             )}

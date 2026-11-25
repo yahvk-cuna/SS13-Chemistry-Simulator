@@ -11,6 +11,12 @@ export const SSMOBS_DT = 2; // SSmobs.wait = 2 SECONDS
 export const REAGENTS_METABOLISM = 0.2; // u/s (0.4u per 2s tick)
 export const REM = 1 / (REAGENTS_METABOLISM * SSMOBS_DT); // 2.5
 
+export const MIN_FIXED_DURATION_SECONDS = 10;
+export const DEFAULT_FIXED_DURATION_SECONDS = 180;
+export const MAX_DURATION_SECONDS = 1800;
+export const AUTO_MIN_DURATION_SECONDS = 30;
+export const AUTO_TAIL_TICKS = 5; // 10s visual flat tail after steady/dead condition is first reached
+
 export const CHEMICAL_QUANTISATION_LEVEL = 0.0001;
 export const CHEMICAL_VOLUME_ROUNDING = 0.01;
 export const REAGENT_STANDARD_PURITY = 0.75;

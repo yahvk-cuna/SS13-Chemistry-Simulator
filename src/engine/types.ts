@@ -22,6 +22,8 @@ export type WoundSeverity = 'none' | 'moderate' | 'severe' | 'critical';
 
 export type RngMode = 'expected' | 'random';
 
+export type SimStopReason = 'fixed' | 'steady' | 'dead' | 'max_cap';
+
 export interface OrganState {
   slot: OrganSlot;
   label: string;
@@ -180,6 +182,7 @@ export interface PatientConfig {
 
 export interface SimOptions {
   durationSeconds: number;
+  maxDurationSeconds?: number;
   rngMode: RngMode;
   seed: number;
 }
@@ -325,6 +328,8 @@ export interface SimSummary {
   minHealth: number;
   maxHealth: number;
   finalStat: MobStat;
+  actualDurationSeconds: number;
+  stopReason: SimStopReason;
   deathTime: number | null;
   fullHealTime: number | null;
   critDuration: number;

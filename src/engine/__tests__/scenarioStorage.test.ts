@@ -155,6 +155,26 @@ describe('scenarioStorage', () => {
     expect(clearScenarioStorage(storage)).toBe(true);
     expect(loadScenarioFromStorage(storage)).toBeNull();
   });
+
+  it('round-trips auto duration (0) and extended fixed duration (1200s)', () => {
+    const { storage } = createFakeStorage();
+    const autoScenario: SimScenario = {
+      patient: makeBasePatient({ brute: 15 }),
+      doses: [createDefaultDose(REAGENTS.libital)],
+      durationSeconds: 0,
+      rngMode: 'expected',
+      seed: 42,
+    };
+    expect(saveScenarioToStorage(autoScenario, storage)).toBe(true);
+    expect(loadScenarioFromStorage(storage)?.durationSeconds).toBe(0);
+
+    const longScenario: SimScenario = {
+      ...autoScenario,
+      durationSeconds: 1200,
+    };
+    expect(saveScenarioToStorage(longScenario, storage)).toBe(true);
+    expect(loadScenarioFromStorage(storage)?.durationSeconds).toBe(1200);
+  });
 });
 
 describe('getScenarioHistoryUrl', () => {

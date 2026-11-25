@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createDefaultDose } from '../regimenStorage';
 import { REAGENTS } from '../reagents';
-import { makeBasePatient } from '../scenarioShare';
+import {
+  createBlankScenario,
+  getScenarioHistoryUrl,
+  makeBasePatient,
+  tryReadScenarioFromHash,
+} from '../scenarioShare';
 import {
   SCENARIO_STORAGE_KEY,
   clearScenarioStorage,
@@ -149,5 +154,31 @@ describe('scenarioStorage', () => {
 
     expect(clearScenarioStorage(storage)).toBe(true);
     expect(loadScenarioFromStorage(storage)).toBeNull();
+  });
+});
+
+describe('getScenarioHistoryUrl', () => {
+  it('returns clean pathname + search without hash for blank scenarios', () => {
+    const blank = createBlankScenario();
+    expect(getScenarioHistoryUrl(blank, { pathname: '/sim/', search: '?v=1' })).toBe('/sim/?v=1');
+  });
+
+  it('appends decodable #s=... hash for non-blank scenarios', () => {
+    const scenario: SimScenario = {
+      patient: makeBasePatient({ brute: 42, burn: 15 }),
+      doses: [createDefaultDose(REAGENTS.libital)],
+      durationSeconds: 180,
+      rngMode: 'expected',
+      seed: 42,
+    };
+    const url = getScenarioHistoryUrl(scenario, { pathname: '/', search: '' });
+    expect(url.startsWith('/#s=')).toBe(true);
+    const hash = url.slice(1);
+    const { scenario: decoded, error } = tryReadScenarioFromHash(hash);
+    expect(error).toBeNull();
+    expect(decoded?.patient.brute).toBe(42);
+    expect(decoded?.patient.burn).toBe(15);
+    expect(decoded?.doses).toHaveLength(1);
+    expect(decoded?.doses[0].reagentId).toBe('libital');
   });
 });

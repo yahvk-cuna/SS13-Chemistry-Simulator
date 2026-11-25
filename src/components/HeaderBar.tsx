@@ -137,7 +137,7 @@ export function HeaderBar({
           type="button"
           className="btn"
           onClick={onOpenShare}
-          title="打开场景分享与导入弹窗（同步将当前场景写入地址栏 #s=...）"
+          title="打开场景分享与导入弹窗（地址栏 #s=... 随编辑自动同步）"
         >
           <Link2 size={14} aria-hidden="true" />
           分享 / 导入

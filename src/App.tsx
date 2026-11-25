@@ -14,9 +14,11 @@ import { TimelineCharts } from './components/TimelineCharts';
 import { MOB_STAT_ZH } from './engine/constants';
 import { createDefaultDose } from './engine/regimenStorage';
 import {
+  BLANK_SCENARIO_PAYLOAD,
   buildScenarioShareUrl,
   createBlankScenario,
   encodeScenarioPayload,
+  getScenarioHistoryUrl,
   tryReadScenarioFromHash,
 } from './engine/scenarioShare';
 import { loadScenarioFromStorage, saveScenarioToStorage } from './engine/scenarioStorage';
@@ -51,10 +53,21 @@ function cloneScenario(scenario: SimScenario): SimScenario {
   };
 }
 
-const BLANK_SCENARIO_PAYLOAD = encodeScenarioPayload(createBlankScenario());
-
 function isNonBlankScenario(scenario: SimScenario): boolean {
   return encodeScenarioPayload(scenario) !== BLANK_SCENARIO_PAYLOAD;
+}
+
+function replaceHistoryUrlSafely(url: string): void {
+  if (typeof window === 'undefined' || typeof window.history?.replaceState !== 'function') {
+    return;
+  }
+  const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (currentUrl === url) return;
+  try {
+    window.history.replaceState(null, '', url);
+  } catch {
+    // Ignore Safari replaceState rate-limit or restricted history errors
+  }
 }
 
 function readInitialScenarioState(): {
@@ -123,6 +136,19 @@ export function App() {
   );
   const latestScenarioRef = useRef<SimScenario>(currentScenario);
   latestScenarioRef.current = currentScenario;
+  const initialBootPayloadRef = useRef<string>(encodeScenarioPayload(initialBoot.scenario));
+  const preserveBrokenHashRef = useRef<boolean>(Boolean(initialBoot.hashError));
+
+  const syncUrlForScenario = (scenario: SimScenario, force = false) => {
+    if (typeof window === 'undefined') return;
+    if (!force && preserveBrokenHashRef.current) {
+      if (encodeScenarioPayload(scenario) === initialBootPayloadRef.current) {
+        return;
+      }
+      preserveBrokenHashRef.current = false;
+    }
+    replaceHistoryUrlSafely(getScenarioHistoryUrl(scenario, window.location));
+  };
 
   const currentShareUrl = useMemo(() => buildScenarioShareUrl(currentScenario), [currentScenario]);
 
@@ -131,18 +157,20 @@ export function App() {
     [patient, doses, durationSeconds, rngMode, seed],
   );
 
-  // Debounced auto-save to localStorage on scenario changes
+  // Debounced auto-save to localStorage and URL hash sync on scenario changes
   useEffect(() => {
     const timer = window.setTimeout(() => {
       saveScenarioToStorage(currentScenario);
+      syncUrlForScenario(currentScenario);
     }, 400);
     return () => window.clearTimeout(timer);
   }, [currentScenario]);
 
-  // Flush latest scenario immediately when page hides
+  // Flush latest scenario to localStorage and URL hash immediately when page hides
   useEffect(() => {
     const flushScenario = () => {
       saveScenarioToStorage(latestScenarioRef.current);
+      syncUrlForScenario(latestScenarioRef.current);
     };
     const onVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
@@ -162,6 +190,7 @@ export function App() {
     const onHashChange = () => {
       const { scenario, error } = tryReadScenarioFromHash(window.location.hash);
       if (scenario) {
+        preserveBrokenHashRef.current = false;
         setPatient(clonePatient(scenario.patient));
         setDoses(cloneDoses(scenario.doses));
         setDurationSeconds(scenario.durationSeconds);
@@ -172,6 +201,8 @@ export function App() {
         setBaselineResult(null);
         setBannerNotice({ type: 'good', text: '已从 URL 链接自动还原场景。' });
       } else if (error) {
+        preserveBrokenHashRef.current = true;
+        initialBootPayloadRef.current = encodeScenarioPayload(latestScenarioRef.current);
         setBannerNotice({ type: 'warn', text: error });
       }
     };
@@ -221,10 +252,8 @@ export function App() {
   };
 
   const handleOpenShare = () => {
-    const shareUrl = buildScenarioShareUrl(currentScenario);
-    if (typeof window !== 'undefined' && window.history?.replaceState) {
-      window.history.replaceState(null, '', shareUrl);
-    }
+    preserveBrokenHashRef.current = false;
+    syncUrlForScenario(currentScenario, true);
     setShareModalOpen(true);
   };
 
@@ -242,10 +271,9 @@ export function App() {
         ? `${window.location.pathname}${window.location.search}${window.location.hash}`
         : '';
 
+    preserveBrokenHashRef.current = false;
     applyScenario(nextScenario);
-    if (typeof window !== 'undefined' && window.history?.replaceState) {
-      window.history.replaceState(null, '', options.nextUrl);
-    }
+    replaceHistoryUrlSafely(options.nextUrl);
 
     setBannerNotice({
       type: 'good',
@@ -254,10 +282,9 @@ export function App() {
       action: {
         label: '撤销',
         onAction: () => {
+          preserveBrokenHashRef.current = false;
           applyScenario(snapshot);
-          if (typeof window !== 'undefined' && window.history?.replaceState) {
-            window.history.replaceState(null, '', previousUrl);
-          }
+          replaceHistoryUrlSafely(previousUrl);
           setBannerNotice({ type: 'good', text: options.undoNoticeText });
         },
       },
@@ -265,8 +292,10 @@ export function App() {
   };
 
   const handleImportScenario = (scenario: SimScenario) => {
+    const nextUrl =
+      typeof window !== 'undefined' ? getScenarioHistoryUrl(scenario, window.location) : '';
     replaceScenarioWithUndo(scenario, {
-      nextUrl: buildScenarioShareUrl(scenario),
+      nextUrl,
       noticeText: `已从链接导入场景（${scenario.doses.length} 项给药，${scenario.durationSeconds}s）`,
       undoNoticeText: '已撤销导入。',
     });
@@ -274,10 +303,10 @@ export function App() {
 
   const handleResetScenario = () => {
     const blank = createBlankScenario();
-    const baseUrl =
-      typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : '';
+    const nextUrl =
+      typeof window !== 'undefined' ? getScenarioHistoryUrl(blank, window.location) : '';
     replaceScenarioWithUndo(blank, {
-      nextUrl: baseUrl,
+      nextUrl,
       noticeText: '已重置为空白场景。',
       undoNoticeText: '已撤销重置。',
     });

@@ -827,3 +827,14 @@ export function tryReadScenarioFromHash(hash: string): { scenario: SimScenario |
     };
   }
 }
+
+export const BLANK_SCENARIO_PAYLOAD = encodeScenarioPayload(createBlankScenario());
+
+export function getScenarioHistoryUrl(
+  scenario: SimScenario,
+  locationLike: { pathname: string; search: string },
+): string {
+  const base = `${locationLike.pathname}${locationLike.search}`;
+  const payload = encodeScenarioPayload(scenario);
+  return payload === BLANK_SCENARIO_PAYLOAD ? base : `${base}#${SCENARIO_HASH_KEY}=${payload}`;
+}

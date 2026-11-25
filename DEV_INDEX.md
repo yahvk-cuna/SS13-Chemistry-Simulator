@@ -52,7 +52,7 @@
 | [src/engine/reactions.ts](file:///home/yahvk/ss13-chem-sim/src/engine/reactions.ts) | `runInBodyReactions(ctx)`：彭斯莱特+肾上腺素/阿托品体内爆炸清血、代谢因子+营养物→治疗肽、抑制因子+营养物→朊病毒肽 |
 | [src/engine/reagents.ts](file:///home/yahvk/ss13-chem-sim/src/engine/reagents.ts) | 全部内置试剂定义与生命周期钩子、`REAGENT_LIST`、`REAGENTS`、`PURITY_DEPENDENT_EFFECT_IDS`、`ALLERGY_BLACKLIST_IDS`、`STOMACH_FOOD_IDS`、`EXTREME_ALLERGY_CANDIDATES`、`isPurityIndependentEffect`、`isExtremeAllergyCandidate`、`isChemicalAllergyTrigger`、`isNoAllergyReagent`、`rollRandomAllergies`、`MECHANISM_TRAITS`（含 `无过敏`、`纯度无关效果`）、`EFFECT_TRAITS`、`getReagentTraits`、`getDisplayColor`、`computeEffectiveOD` |
 | [src/engine/simulator.ts](file:///home/yahvk/ss13-chem-sim/src/engine/simulator.ts) | `runSimulation(patient, doses, options)`：12 步 Tick 主循环（含复合贴片按比例共享 `0.75u/t` 缓释、极端药物过敏与肾上腺素阻断、呕吐排胃及 4b 化学过敏基因突变）、`addToHolder`、`computeStat`、`organStatusLabel`、`syncTraits` 及事件/汇总生成 |
-| [src/engine/scenarioShare.ts](file:///home/yahvk/ss13-chem-sim/src/engine/scenarioShare.ts) | 患者构造与场景 URL Hash（`#s=`）紧凑二进制位图 Base64URL 编解码（含只追加稳定索引表 `REAGENT_SHARE_ORDER`、`patchGroup`）：`makeBasePatient`、`createBlankScenario`、`encodeScenarioPayload`、`decodeScenarioPayload`、`buildScenarioShareUrl`、`extractScenarioPayloadFromInput`、`parseScenarioFromUrlOrText`、`tryReadScenarioFromHash` |
+| [src/engine/scenarioShare.ts](file:///home/yahvk/ss13-chem-sim/src/engine/scenarioShare.ts) | 患者构造与场景 URL Hash（`#s=`）紧凑二进制位图 Base64URL 编解码（含只追加稳定索引表 `REAGENT_SHARE_ORDER`、`patchGroup`）：`makeBasePatient`、`createBlankScenario`、`BLANK_SCENARIO_PAYLOAD`、`encodeScenarioPayload`、`decodeScenarioPayload`、`buildScenarioShareUrl`、`getScenarioHistoryUrl`、`extractScenarioPayloadFromInput`、`parseScenarioFromUrlOrText`、`tryReadScenarioFromHash` |
 | [src/engine/scenarioStorage.ts](file:///home/yahvk/ss13-chem-sim/src/engine/scenarioStorage.ts) | 场景自动持久化至 `localStorage`（复用 `scenarioShare` 编解码，全量 `try/catch` 容错）：`SCENARIO_STORAGE_KEY`、`StorageLike`、`saveScenarioToStorage`、`loadScenarioFromStorage`、`clearScenarioStorage` |
 | [src/engine/regimenStorage.ts](file:///home/yahvk/ss13-chem-sim/src/engine/regimenStorage.ts) | 给药方案存档、合片装箱、菜谱导出与默认剂量工具：`createDefaultDose`、`cloneRegimenDoses`、`sanitizeDoseEvent`、`createOrUpdateSavedRegimen`、`serializeRegimensJson`、`parseRegimensJson`、`areReagentsContainerIncompatible`、`autoPackPatchGroups`、`formatRegimenPlainText`、`loadSavedRegimensFromStorage`、`saveRegimensToStorage` |
 | [src/engine/__tests__/simulator.test.ts](file:///home/yahvk/ss13-chem-sim/src/engine/__tests__/simulator.test.ts) | Vitest 核心机制回归测试套件 |
@@ -220,7 +220,7 @@
 - **坑点 2（有益反应 vs 危险反应警报区分）**：`SimSummary` 中用 `triggeredDangerReactions`（仅统计 `severity === 'danger'` 且 `category === 'reaction'`）与 `triggeredReactions` 区分，避免把益生泰尔催化生成治疗肽等正常生理转换误判为风险警报，同时确保彭斯莱特爆炸在 KPI 第 5 卡明确标红。
 - **坑点 3（1280px 桌面视口三栏与状态胶囊）**：`src/styles/index.css` 中三栏采用 `320px minmax(420px, 1fr) 320px` 且媒体查询断点设在 `@media (max-width: 1180px)`，保证带纵向滚动条的 `1280×800` 浏览器不会意外把右栏挤到底部；`.stat-badge` 必须保留 `white-space: nowrap; flex-shrink: 0;` 防止中文徽章跨行截断。
 - **坑点 4（严格 TS 编译约束）**：[tsconfig.json](file:///home/yahvk/ss13-chem-sim/tsconfig.json) 开启了 `noUnusedLocals` 与 `noUnusedParameters`，未使用的参数（如 `overdoseProcess` 中的 `dt`）必须前缀 `_`。
-- **坑点 5（场景启动优先级与持久化编解码边界）**：启动加载优先级为「有效 URL Hash > `localStorage` > 空白场景」（Hash 无效时保留 `hashError` 警告提示并回落至 `localStorage` 场景）；场景自动持久化走 `scenarioShare` 编解码器（[scenarioShare.ts](file:///home/yahvk/ss13-chem-sim/src/engine/scenarioShare.ts)），因此未加入 `REAGENT_SHARE_ORDER` 的试剂不会被保存。
+- **坑点 5（场景启动优先级、URL 自动同步与持久化编解码边界）**：启动加载优先级为「有效 URL Hash > `localStorage` > 空白场景」（Hash 无效时保留 `hashError` 警告提示并保留损坏 Hash 直至用户发生编辑）；编辑非空白场景时通过 400ms 防抖及 `pagehide`/`visibilitychange` 刷盘使用 `history.replaceState` 自动同步 `#s=...`（空白场景自动清除 Hash），避免刷新时旧 Hash 覆盖最新编辑；场景自动持久化走 `scenarioShare` 编解码器（[scenarioShare.ts](file:///home/yahvk/ss13-chem-sim/src/engine/scenarioShare.ts)），因此未加入 `REAGENT_SHARE_ORDER` 的试剂不会被保存。
 - **预留未来扩展方向（当前尚未纳入范围）**：烧杯加药合成 / pH 与反应热计算（对应 `chemistry/recipes/*.dm`）、传染病/病毒进度曲线、呼吸系统吸入气溶胶混合模拟（`atmos_gas_reagents.dm`）。
 
 ---
@@ -286,4 +286,8 @@
 ### 2026-11-25 — 顶栏重置直接触发与快捷键聚焦隔离
 - [HeaderBar.tsx](file:///home/yahvk/ss13-chem-sim/src/components/HeaderBar.tsx)：重置按钮改为单击直接触发重置，配合 8 秒 Toast 撤销保障防误触。
 - [TimelineCharts.tsx](file:///home/yahvk/ss13-chem-sim/src/components/TimelineCharts.tsx)：全局 `Space` 播放/暂停快捷键排除按钮、链接、摘要与交互角色聚焦态，避免聚焦事件日志等控件按 `Space` 时误触发播放。
+- **验证**：`bun run test`、`bun run typecheck`、`bun run build` 均通过。
+
+### 2026-11-26 — UI/UX 交互整改（#1 URL 自动同步）
+- [scenarioShare.ts](file:///home/yahvk/ss13-chem-sim/src/engine/scenarioShare.ts)、[App.tsx](file:///home/yahvk/ss13-chem-sim/src/App.tsx)、[HeaderBar.tsx](file:///home/yahvk/ss13-chem-sim/src/components/HeaderBar.tsx) 与 [scenarioStorage.test.ts](file:///home/yahvk/ss13-chem-sim/src/engine/__tests__/scenarioStorage.test.ts)：新增 `BLANK_SCENARIO_PAYLOAD` 与 `getScenarioHistoryUrl`，编辑场景时随 400ms 防抖与 `pagehide`/`visibilitychange` 自动通过 `history.replaceState` 同步 `#s=...`（空白场景清除 Hash，损坏链接在未编辑前保留提示与原 Hash），解决分享后继续编辑刷新丢失修改的问题。
 - **验证**：`bun run test`、`bun run typecheck`、`bun run build` 均通过。

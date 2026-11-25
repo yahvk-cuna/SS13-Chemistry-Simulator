@@ -1,5 +1,5 @@
-import { X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { AlertCircle, AlertTriangle, CheckCircle2, Info, Undo2, X } from 'lucide-react';
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AboutModal } from './components/AboutModal';
 import { EventLog } from './components/EventLog';
 import { HandbookModal } from './components/HandbookModal';
@@ -14,7 +14,6 @@ import { TimelineCharts } from './components/TimelineCharts';
 import { MOB_STAT_ZH } from './engine/constants';
 import { createDefaultDose } from './engine/regimenStorage';
 import {
-  BLANK_SCENARIO_PAYLOAD,
   buildScenarioShareUrl,
   createBlankScenario,
   encodeScenarioPayload,
@@ -25,8 +24,8 @@ import { loadScenarioFromStorage, saveScenarioToStorage } from './engine/scenari
 import { runSimulation } from './engine/simulator';
 import type { DoseEvent, PatientConfig, ReagentDef, RngMode, SimResult, SimScenario } from './engine/types';
 
-interface BannerNotice {
-  type: 'good' | 'warn';
+export interface BannerNotice {
+  type: 'neutral' | 'good' | 'warn' | 'danger';
   text: string;
   action?: {
     label: string;
@@ -53,9 +52,8 @@ function cloneScenario(scenario: SimScenario): SimScenario {
   };
 }
 
-function isNonBlankScenario(scenario: SimScenario): boolean {
-  return encodeScenarioPayload(scenario) !== BLANK_SCENARIO_PAYLOAD;
-}
+const DEFAULT_TOAST_DURATION_MS = 5000;
+const UNDO_TOAST_DURATION_MS = 12000;
 
 function replaceHistoryUrlSafely(url: string): void {
   if (typeof window === 'undefined' || typeof window.history?.replaceState !== 'function') {
@@ -73,26 +71,24 @@ function replaceHistoryUrlSafely(url: string): void {
 function readInitialScenarioState(): {
   scenario: SimScenario;
   hashError: string | null;
-  restoredFromStorage: boolean;
 } {
   if (typeof window !== 'undefined') {
     const { scenario: hashScenario, error: hashError } = tryReadScenarioFromHash(window.location.hash);
     if (hashScenario) {
-      return { scenario: hashScenario, hashError: null, restoredFromStorage: false };
+      return { scenario: hashScenario, hashError: null };
     }
     const storedScenario = loadScenarioFromStorage();
     if (storedScenario) {
       return {
         scenario: storedScenario,
         hashError,
-        restoredFromStorage: isNonBlankScenario(storedScenario),
       };
     }
     if (hashError) {
-      return { scenario: createBlankScenario(), hashError, restoredFromStorage: false };
+      return { scenario: createBlankScenario(), hashError };
     }
   }
-  return { scenario: createBlankScenario(), hashError: null, restoredFromStorage: false };
+  return { scenario: createBlankScenario(), hashError: null };
 }
 
 export function App() {
@@ -112,15 +108,22 @@ export function App() {
   const [handbookQuery, setHandbookQuery] = useState<string>('');
   const [shareModalOpen, setShareModalOpen] = useState<boolean>(false);
   const [aboutOpen, setAboutOpen] = useState<boolean>(false);
-  const [bannerNotice, setBannerNotice] = useState<BannerNotice | null>(() => {
-    if (initialBoot.hashError) {
-      return { type: 'warn', text: initialBoot.hashError };
-    }
-    if (initialBoot.restoredFromStorage) {
-      return { type: 'good', text: '已恢复上次编辑的场景。' };
-    }
-    return null;
+  const [scenarioVersion, setScenarioVersion] = useState<number>(0);
+  const toastSeqRef = useRef<number>(0);
+  const toastRemainingRef = useRef<number>(DEFAULT_TOAST_DURATION_MS);
+  const [toastPaused, setToastPaused] = useState<boolean>(false);
+  const [toastState, setToastState] = useState<{ id: number; notice: BannerNotice } | null>(() => {
+    if (!initialBoot.hashError) return null;
+    const notice: BannerNotice = { type: 'warn', text: initialBoot.hashError };
+    toastRemainingRef.current = DEFAULT_TOAST_DURATION_MS;
+    return { id: ++toastSeqRef.current, notice };
   });
+
+  const setBannerNotice = useCallback((notice: BannerNotice | null) => {
+    setToastPaused(false);
+    toastRemainingRef.current = notice ? (notice.durationMs ?? DEFAULT_TOAST_DURATION_MS) : 0;
+    setToastState(notice ? { id: ++toastSeqRef.current, notice } : null);
+  }, []);
 
   const doseCountsByReagent = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -199,6 +202,7 @@ export function App() {
         setSelectedTime(0);
         setIsPlaying(false);
         setBaselineResult(null);
+        setScenarioVersion((v) => v + 1);
         setBannerNotice({ type: 'good', text: '已从 URL 链接自动还原场景。' });
       } else if (error) {
         preserveBrokenHashRef.current = true;
@@ -210,12 +214,17 @@ export function App() {
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
-  // Auto-dismiss transient good notices
+  // Auto-dismiss transient notices (warn stays until dismissed)
   useEffect(() => {
-    if (!bannerNotice || bannerNotice.type !== 'good') return;
-    const timer = window.setTimeout(() => setBannerNotice(null), bannerNotice.durationMs ?? 3500);
-    return () => window.clearTimeout(timer);
-  }, [bannerNotice]);
+    if (!toastState || toastState.notice.type === 'warn' || toastPaused) return;
+    const remaining = Math.max(0, toastRemainingRef.current);
+    const startedAt = Date.now();
+    const timer = window.setTimeout(() => setToastState(null), remaining);
+    return () => {
+      window.clearTimeout(timer);
+      toastRemainingRef.current = Math.max(0, remaining - (Date.now() - startedAt));
+    };
+  }, [toastState, toastPaused]);
 
   // Clamp selectedTime when duration shrinks
   useEffect(() => {
@@ -249,6 +258,7 @@ export function App() {
     setSelectedTime(0);
     setIsPlaying(false);
     setBaselineResult(null);
+    setScenarioVersion((v) => v + 1);
   };
 
   const handleOpenShare = () => {
@@ -262,7 +272,7 @@ export function App() {
     options: {
       nextUrl: string;
       noticeText: string;
-      undoNoticeText: string;
+      noticeType?: BannerNotice['type'];
     },
   ) => {
     const snapshot = cloneScenario(currentScenario);
@@ -276,16 +286,15 @@ export function App() {
     replaceHistoryUrlSafely(options.nextUrl);
 
     setBannerNotice({
-      type: 'good',
+      type: options.noticeType ?? 'neutral',
       text: options.noticeText,
-      durationMs: 8000,
+      durationMs: UNDO_TOAST_DURATION_MS,
       action: {
         label: '撤销',
         onAction: () => {
           preserveBrokenHashRef.current = false;
           applyScenario(snapshot);
           replaceHistoryUrlSafely(previousUrl);
-          setBannerNotice({ type: 'good', text: options.undoNoticeText });
         },
       },
     });
@@ -296,8 +305,8 @@ export function App() {
       typeof window !== 'undefined' ? getScenarioHistoryUrl(scenario, window.location) : '';
     replaceScenarioWithUndo(scenario, {
       nextUrl,
+      noticeType: 'neutral',
       noticeText: `已从链接导入场景（${scenario.doses.length} 项给药，${scenario.durationSeconds}s）`,
-      undoNoticeText: '已撤销导入。',
     });
   };
 
@@ -307,8 +316,8 @@ export function App() {
       typeof window !== 'undefined' ? getScenarioHistoryUrl(blank, window.location) : '';
     replaceScenarioWithUndo(blank, {
       nextUrl,
+      noticeType: 'danger',
       noticeText: '已重置为空白场景。',
-      undoNoticeText: '已撤销重置。',
     });
   };
 
@@ -366,6 +375,8 @@ export function App() {
             onChange={handleDosesChange}
             patientAllergies={patient.allergies}
             hasChemicalAllergy={patient.chemicalAllergy}
+            scenarioVersion={scenarioVersion}
+            onNotify={setBannerNotice}
             onOpenReagentLibrary={() => {
               setHandbookQuery('');
               setHandbookOpen(true);
@@ -422,32 +433,56 @@ export function App() {
 
       <div
         className="toast-container"
-        role={bannerNotice?.type === 'warn' ? 'alert' : 'status'}
-        aria-live={bannerNotice?.type === 'warn' ? 'assertive' : 'polite'}
+        role={toastState?.notice.type === 'warn' ? 'alert' : 'status'}
+        aria-live={toastState?.notice.type === 'warn' ? 'assertive' : 'polite'}
         aria-atomic="true"
       >
-        {bannerNotice && (
-          <div className={`warning-banner toast-banner ${bannerNotice.type === 'warn' ? 'warn' : 'good'}`}>
+        {toastState && (
+          <div
+            key={toastState.id}
+            className={`toast-banner ${toastState.notice.type}${toastPaused ? ' paused' : ''}`}
+            style={{ '--toast-duration': `${toastState.notice.durationMs ?? DEFAULT_TOAST_DURATION_MS}ms` } as CSSProperties}
+            onMouseEnter={() => setToastPaused(true)}
+            onMouseLeave={() => setToastPaused(false)}
+            onFocus={() => setToastPaused(true)}
+            onBlur={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                setToastPaused(false);
+              }
+            }}
+          >
             <div className="toast-content">
-              <span className="toast-text">{bannerNotice.text}</span>
+              <span className="toast-icon" aria-hidden="true">
+                {toastState.notice.type === 'warn' ? (
+                  <AlertTriangle size={17} />
+                ) : toastState.notice.type === 'danger' ? (
+                  <AlertCircle size={17} />
+                ) : toastState.notice.type === 'good' ? (
+                  <CheckCircle2 size={17} />
+                ) : (
+                  <Info size={17} />
+                )}
+              </span>
+              <span className="toast-text">{toastState.notice.text}</span>
               <div className="toast-actions">
-                {bannerNotice.action && (
+                {toastState.notice.action && (
                   <button
                     type="button"
                     className="toast-action-btn"
                     onClick={() => {
-                      const action = bannerNotice.action;
-                      setBannerNotice(null);
+                      const action = toastState.notice.action;
+                      setToastState(null);
                       action?.onAction();
                     }}
                   >
-                    {bannerNotice.action.label}
+                    <Undo2 size={13} aria-hidden="true" />
+                    {toastState.notice.action.label}
                   </button>
                 )}
                 <button
                   type="button"
                   className="toast-close-btn"
-                  onClick={() => setBannerNotice(null)}
+                  onClick={() => setToastState(null)}
                   aria-label="关闭通知"
                   title="关闭通知"
                 >
@@ -455,6 +490,7 @@ export function App() {
                 </button>
               </div>
             </div>
+            {toastState.notice.type !== 'warn' && <div className="toast-progress" aria-hidden="true" />}
           </div>
         )}
       </div>

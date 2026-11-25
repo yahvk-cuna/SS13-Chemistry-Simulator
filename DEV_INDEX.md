@@ -65,7 +65,7 @@
 | [src/components/NumericInput.tsx](file:///home/yahvk/ss13-chem-sim/src/components/NumericInput.tsx) | 通用受控数字输入框：编辑期保留临时文本，失焦或按 `Enter` 时统一校验、钳制并提交，`Esc` 取消编辑 |
 | [src/components/HeaderBar.tsx](file:///home/yahvk/ss13-chem-sim/src/components/HeaderBar.tsx) | 顶部栏：模拟时长（60–600s）、期望/随机模式与种子、`固定对比基准`（含基准状态标签）、`分享 / 导入`、`重置`（直接重置并支持 Toast 撤销）、`药品图鉴`与`关于`开关 |
 | [src/components/PatientPanel.tsx](file:///home/yahvk/ss13-chem-sim/src/components/PatientPanel.tsx) | 患者初始状态：五维伤害滑块、一键伤势快捷填充、7 个器官损伤与 6 种肝脏型号、血量/出血/伤口等级、体温与环境（标准/低温仓/高温/真空）以及「药物过敏与免疫异常」（极端药物过敏多选/上游抽选 6 种 + 化学过敏基因突变开关） |
-| [src/components/RegimenPanel.tsx](file:///home/yahvk/ss13-chem-sim/src/components/RegimenPanel.tsx) | 多药组合方案、可折叠方案存档管理区（两行窄栏排版、二次确认覆盖/删除/清空、复制当前/导出全部/导入 JSON）、导出纯文本菜谱抽屉（多行菜谱/单行紧凑切换、复制与下载 `.txt`）、贴片合装（`autoPackPatchGroups` 一键合片与单卡容器归组/分摊速率显示）、速添胶囊悬停/聚焦提示，以及药卡药名悬停显示简介提示，点击固定为跟随药名的悬浮窗（跟随滚动、点击外部/`Esc` 关闭）、单卡折叠与纯度快切、过敏原高亮与配伍预检横幅 |
+| [src/components/RegimenPanel.tsx](file:///home/yahvk/ss13-chem-sim/src/components/RegimenPanel.tsx) | 多药组合方案、可折叠方案存档管理区（两行窄栏排版、二次确认覆盖/删除、清空/删药/加载/同名覆盖均支持 Toast 撤销、复制当前/导出全部/导入 JSON）、导出纯文本菜谱抽屉（多行菜谱/单行紧凑切换、复制与下载 `.txt`）、贴片合装（`autoPackPatchGroups` 一键合片与单卡容器归组/分摊速率显示）、速添胶囊悬停/聚焦提示，以及药卡药名悬停显示简介提示，点击固定为跟随药名的悬浮窗（跟随滚动、点击外部/`Esc` 关闭）、单卡折叠与纯度快切、过敏原高亮与配伍预检横幅 |
 | [src/components/ReagentFloat.tsx](file:///home/yahvk/ss13-chem-sim/src/components/ReagentFloat.tsx) | `ReagentFloat`：药品详情浮层容器，悬停提示（`interactive={false}`）与点击固定悬浮窗（`interactive`）共用；跟随锚点元素定位并夹取在视口内，锚点离开视口时调用 `onAnchorLost` |
 | [src/components/ScenarioShareModal.tsx](file:///home/yahvk/ss13-chem-sim/src/components/ScenarioShareModal.tsx) | 场景 URL 分享与导入弹窗：只读 `#s=...` 链接预览与复制、URL/编码串粘贴导入并替换当前场景 |
 | [src/components/SummaryStrip.tsx](file:///home/yahvk/ss13-chem-sim/src/components/SummaryStrip.tsx) | 5 张 KPI 总结卡：终末 HP 与 `STAT_ZH` 徽章（含基准对比差值）、康复/死亡/危急累计耗时、四维净治疗量、峰值器官损伤、药理风险警报（含过敏触发统计） |
@@ -288,7 +288,9 @@
 - [TimelineCharts.tsx](file:///home/yahvk/ss13-chem-sim/src/components/TimelineCharts.tsx)：全局 `Space` 播放/暂停快捷键排除按钮、链接、摘要与交互角色聚焦态，避免聚焦事件日志等控件按 `Space` 时误触发播放。
 - **验证**：`bun run test`、`bun run typecheck`、`bun run build` 均通过。
 
-### 2026-11-26 — UI/UX 交互整改（#1 URL 自动同步、#3 快捷键隔离与播放栏精简）
+### 2026-11-26 — UI/UX 交互整改（#1 URL 自动同步、#3 快捷键隔离与播放栏精简、#7 统一撤销与方案名清理）
 - [scenarioShare.ts](file:///home/yahvk/ss13-chem-sim/src/engine/scenarioShare.ts)、[App.tsx](file:///home/yahvk/ss13-chem-sim/src/App.tsx)、[HeaderBar.tsx](file:///home/yahvk/ss13-chem-sim/src/components/HeaderBar.tsx) 与 [scenarioStorage.test.ts](file:///home/yahvk/ss13-chem-sim/src/engine/__tests__/scenarioStorage.test.ts)：新增 `BLANK_SCENARIO_PAYLOAD` 与 `getScenarioHistoryUrl`，编辑场景时随 400ms 防抖与 `pagehide`/`visibilitychange` 自动通过 `history.replaceState` 同步 `#s=...`（空白场景清除 Hash，损坏链接在未编辑前保留提示与原 Hash），解决分享后继续编辑刷新丢失修改的问题。
 - [TimelineCharts.tsx](file:///home/yahvk/ss13-chem-sim/src/components/TimelineCharts.tsx) 与 [index.css](file:///home/yahvk/ss13-chem-sim/src/styles/index.css)：全局播放/步进快捷键仅在存在模态弹窗（`[role="dialog"][aria-modal="true"]`）时暂停响应，允许固定药品详情悬浮窗时正常使用 `Space` / `←` / `→`；播放栏保持紧凑布局，仅保留按钮与时间轴控件的 `title` 与 `aria-keyshortcuts` 提示。
+- [App.tsx](file:///home/yahvk/ss13-chem-sim/src/App.tsx) 与 [RegimenPanel.tsx](file:///home/yahvk/ss13-chem-sim/src/components/RegimenPanel.tsx)：重置或从 URL 还原/导入场景时递增 `scenarioVersion` 并清空残留的 `schemeName`；清空给药、删除单张药卡、加载/单方案导入替换以及同名覆盖保存均接入全局 12 秒 Toast 撤销（点击撤销与启动从 `localStorage` 恢复均静默生效，不额外弹窗）。
+- [App.tsx](file:///home/yahvk/ss13-chem-sim/src/App.tsx)、[RegimenPanel.tsx](file:///home/yahvk/ss13-chem-sim/src/components/RegimenPanel.tsx) 与 [index.css](file:///home/yahvk/ss13-chem-sim/src/styles/index.css)：全局 Toast 升级为底部居中中性亮面 Snackbar（`bottom: 24px` 居中，窄屏 `bottom: 64px` 避让结果浮钮；常规 5 秒、可撤销 12 秒），按 `neutral / good / warn / danger` 分级（仅用左色条、前置图标与细边框区分语义，清空/重置标红、常规操作回执为中性、URL 还原为绿、损坏链接为琥珀常驻），「撤销」使用唯一高饱和实色青蓝主按钮，支持悬停/聚焦暂停倒计时与底部进度条。
 - **验证**：`bun run test`、`bun run typecheck`、`bun run build` 均通过。

@@ -40,6 +40,7 @@ import {
   saveRegimensToStorage,
   serializeRegimensJson,
 } from '../engine/regimenStorage';
+import type { BannerNotice } from '../App';
 import type { DeliveryMethod, DoseEvent, ReagentDef, SavedRegimen } from '../engine/types';
 
 interface RegimenPanelProps {
@@ -47,6 +48,8 @@ interface RegimenPanelProps {
   onChange: (next: DoseEvent[]) => void;
   patientAllergies: string[];
   hasChemicalAllergy: boolean;
+  scenarioVersion?: number;
+  onNotify?: (notice: BannerNotice) => void;
   onOpenReagentLibrary: () => void;
   onInspectReagent?: (def: ReagentDef) => void;
 }
@@ -76,6 +79,8 @@ export function RegimenPanel({
   onChange,
   patientAllergies,
   hasChemicalAllergy,
+  scenarioVersion,
+  onNotify,
   onOpenReagentLibrary,
   onInspectReagent,
 }: RegimenPanelProps) {
@@ -89,9 +94,9 @@ export function RegimenPanel({
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState('');
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'good' | 'warn'; text: string } | null>(null);
-  const [confirmClear, setConfirmClear] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmOverwriteId, setConfirmOverwriteId] = useState<string | null>(null);
+  const prevScenarioVersionRef = useRef(scenarioVersion);
   const [collapsedIds, setCollapsedIds] = useState<Record<string, boolean>>({});
   const [openPopovers, setOpenPopovers] = useState<{ doseId: string; z: number }[]>([]);
   const [hoveredInfo, setHoveredInfo] = useState<{ def: ReagentDef; anchor: HTMLElement } | null>(null);
@@ -115,16 +120,19 @@ export function RegimenPanel({
   }, [hoveredInfo]);
 
   useEffect(() => {
+    if (prevScenarioVersionRef.current === scenarioVersion) return;
+    prevScenarioVersionRef.current = scenarioVersion;
+    setSchemeName('');
+    setFeedbackMsg(null);
+    setConfirmDeleteId(null);
+    setConfirmOverwriteId(null);
+  }, [scenarioVersion]);
+
+  useEffect(() => {
     if (!feedbackMsg) return;
     const timer = window.setTimeout(() => setFeedbackMsg(null), 3500);
     return () => window.clearTimeout(timer);
   }, [feedbackMsg]);
-
-  useEffect(() => {
-    if (!confirmClear) return;
-    const timer = window.setTimeout(() => setConfirmClear(false), 3000);
-    return () => window.clearTimeout(timer);
-  }, [confirmClear]);
 
   useEffect(() => {
     if (!confirmDeleteId) return;
@@ -150,10 +158,27 @@ export function RegimenPanel({
 
   const handleSaveCurrent = () => {
     if (doses.length === 0) return;
+    const prevSaved = savedRegimens;
+    const isOverwrite = matchedByName;
     const { list, saved } = createOrUpdateSavedRegimen(savedRegimens, schemeName, doses);
     updateSavedList(list);
     setSchemeName(saved.name);
-    setFeedbackMsg({ type: 'good', text: `已保存方案「${saved.name}」（共 ${saved.doses.length} 项）` });
+    if (isOverwrite && onNotify) {
+      setFeedbackMsg(null);
+      onNotify({
+        type: 'neutral',
+        text: `已覆盖保存方案「${saved.name}」（共 ${saved.doses.length} 项）`,
+        durationMs: 12000,
+        action: {
+          label: '撤销',
+          onAction: () => {
+            updateSavedList(prevSaved);
+          },
+        },
+      });
+    } else {
+      setFeedbackMsg({ type: 'good', text: `已保存方案「${saved.name}」（共 ${saved.doses.length} 项）` });
+    }
   };
 
   const handleOverwriteRegimen = (item: SavedRegimen) => {
@@ -169,9 +194,27 @@ export function RegimenPanel({
   };
 
   const handleLoadRegimen = (item: SavedRegimen) => {
+    const prevDoses = doses.map((d) => ({ ...d }));
+    const prevSchemeName = schemeName;
     onChange(cloneRegimenDoses(item.doses));
     setSchemeName(item.name);
-    setFeedbackMsg({ type: 'good', text: `已加载方案「${item.name}」` });
+    if (prevDoses.length > 0 && onNotify) {
+      setFeedbackMsg(null);
+      onNotify({
+        type: 'neutral',
+        text: `已加载方案「${item.name}」`,
+        durationMs: 12000,
+        action: {
+          label: '撤销',
+          onAction: () => {
+            onChange(prevDoses);
+            setSchemeName(prevSchemeName);
+          },
+        },
+      });
+    } else {
+      setFeedbackMsg({ type: 'good', text: `已加载方案「${item.name}」` });
+    }
   };
 
   const handleAppendRegimen = (item: SavedRegimen) => {
@@ -289,6 +332,8 @@ export function RegimenPanel({
         const res = createOrUpdateSavedRegimen(nextList, reg.name, reg.doses);
         nextList = res.list;
       }
+      const prevDoses = doses.map((d) => ({ ...d }));
+      const prevSchemeName = schemeName;
       updateSavedList(nextList);
       if (imported.length === 1) {
         onChange(cloneRegimenDoses(imported[0].doses));
@@ -296,13 +341,29 @@ export function RegimenPanel({
       }
       setImportText('');
       setImportOpen(false);
-      setFeedbackMsg({
-        type: 'good',
-        text:
-          imported.length === 1
-            ? `已导入并加载方案「${imported[0].name}」`
-            : `成功导入 ${imported.length} 套给药方案`,
-      });
+      if (imported.length === 1 && prevDoses.length > 0 && onNotify) {
+        setFeedbackMsg(null);
+        onNotify({
+          type: 'neutral',
+          text: `已导入并加载方案「${imported[0].name}」`,
+          durationMs: 12000,
+          action: {
+            label: '撤销',
+            onAction: () => {
+              onChange(prevDoses);
+              setSchemeName(prevSchemeName);
+            },
+          },
+        });
+      } else {
+        setFeedbackMsg({
+          type: 'good',
+          text:
+            imported.length === 1
+              ? `已导入并加载方案「${imported[0].name}」`
+              : `成功导入 ${imported.length} 套给药方案`,
+        });
+      }
     } catch (err) {
       setFeedbackMsg({
         type: 'warn',
@@ -468,18 +529,50 @@ export function RegimenPanel({
   );
 
   const removeDose = (id: string) => {
+    const target = doses.find((d) => d.id === id);
+    if (!target) return;
+    const prevDoses = doses.map((d) => ({ ...d }));
+    const label = REAGENTS[target.reagentId]?.zhName ?? target.reagentId;
     onChange(doses.filter((d) => d.id !== id));
+    if (onNotify) {
+      setFeedbackMsg(null);
+      onNotify({
+        type: 'neutral',
+        text: `已移除「${label}」`,
+        durationMs: 12000,
+        action: {
+          label: '撤销',
+          onAction: () => {
+            onChange(prevDoses);
+          },
+        },
+      });
+    }
   };
 
   const handleClearDoses = () => {
     if (doses.length === 0) return;
-    if (!confirmClear) {
-      setConfirmClear(true);
-      return;
-    }
+    const prevDoses = doses.map((d) => ({ ...d }));
+    const prevSchemeName = schemeName;
     onChange([]);
-    setConfirmClear(false);
-    setFeedbackMsg({ type: 'warn', text: '已清空当前给药方案' });
+    setSchemeName('');
+    if (onNotify) {
+      setFeedbackMsg(null);
+      onNotify({
+        type: 'danger',
+        text: `已清空当前给药方案（共 ${prevDoses.length} 项）`,
+        durationMs: 12000,
+        action: {
+          label: '撤销',
+          onAction: () => {
+            onChange(prevDoses);
+            setSchemeName(prevSchemeName);
+          },
+        },
+      });
+    } else {
+      setFeedbackMsg({ type: 'warn', text: '已清空当前给药方案' });
+    }
   };
 
   const preflightWarnings = useMemo(() => {
@@ -724,12 +817,12 @@ export function RegimenPanel({
           {doses.length > 0 && (
             <button
               type="button"
-              className={`btn btn-sm ${confirmClear ? 'btn-danger' : ''}`}
-              title="清空当前全部给药条目"
+              className="btn btn-sm"
+              title="清空当前全部给药条目（支持在提示中撤销）"
               onClick={handleClearDoses}
             >
               <Trash2 size={12} aria-hidden="true" />
-              {confirmClear ? '确认清空?' : '清空'}
+              清空
             </button>
           )}
           <button type="button" className="btn btn-primary btn-sm" onClick={onOpenReagentLibrary}>

@@ -1,6 +1,7 @@
-import { BookOpen, Dices, Download, FlaskConical, Info, Link2, Pin, PinOff, RotateCcw } from 'lucide-react';
+import { BookOpen, Dices, FlaskConical, Info, Link2, Pin, PinOff, RotateCcw } from 'lucide-react';
 import { SCENARIO_DURATIONS } from '../engine/scenarioShare';
 import type { RngMode } from '../engine/types';
+import { NumericInput } from './NumericInput';
 
 interface HeaderBarProps {
   durationSeconds: number;
@@ -10,9 +11,9 @@ interface HeaderBarProps {
   seed: number;
   onSeedChange: (seed: number) => void;
   hasBaseline: boolean;
+  baselineLabel: string | null;
   onToggleBaseline: () => void;
-  onShareUrl: () => void;
-  onOpenImportUrl: () => void;
+  onOpenShare: () => void;
   onResetScenario: () => void;
   onOpenHandbook: () => void;
   onOpenAbout: () => void;
@@ -26,9 +27,9 @@ export function HeaderBar({
   seed,
   onSeedChange,
   hasBaseline,
+  baselineLabel,
   onToggleBaseline,
-  onShareUrl,
-  onOpenImportUrl,
+  onOpenShare,
   onResetScenario,
   onOpenHandbook,
   onOpenAbout,
@@ -70,10 +71,11 @@ export function HeaderBar({
 
         <div className="control-group">
           <span className="control-label">随机模式</span>
-          <div className="seg-toggle">
+          <div className="seg-toggle" role="group" aria-label="随机模式">
             <button
               type="button"
               className={`seg-btn ${rngMode === 'expected' ? 'active' : ''}`}
+              aria-pressed={rngMode === 'expected'}
               onClick={() => onRngModeChange('expected')}
             >
               期望曲线
@@ -81,6 +83,7 @@ export function HeaderBar({
             <button
               type="button"
               className={`seg-btn ${rngMode === 'random' ? 'active' : ''}`}
+              aria-pressed={rngMode === 'random'}
               onClick={() => onRngModeChange('random')}
             >
               随机种子
@@ -88,63 +91,65 @@ export function HeaderBar({
           </div>
           {rngMode === 'random' && (
             <>
-              <input
-                type="number"
+              <NumericInput
                 className="ui-input mono"
                 style={{ width: 72 }}
+                min={1}
+                max={9999999}
+                integer
+                fallback={1}
                 value={seed}
-                onChange={(e) => onSeedChange(Number(e.target.value) || 1)}
-                aria-label="随机种子"
+                onCommit={onSeedChange}
+                ariaLabel="随机种子"
               />
               <button
                 type="button"
                 className="btn btn-icon"
+                style={{ minWidth: 32, minHeight: 32 }}
                 title="随机新种子"
+                aria-label="随机新种子"
                 onClick={() => onSeedChange(Math.floor(Math.random() * 99999) + 1)}
               >
-                <Dices size={14} />
+                <Dices size={14} aria-hidden="true" />
               </button>
             </>
           )}
         </div>
 
-        <button
-          type="button"
-          className={`btn ${hasBaseline ? 'btn-good' : ''}`}
-          onClick={onToggleBaseline}
-          title="固定当前生命曲线作为虚线对比基准，方便调整剂量后直观对比"
-        >
-          {hasBaseline ? <PinOff size={14} /> : <Pin size={14} />}
-          {hasBaseline ? '清除基准对比' : '固定对比基准'}
-        </button>
+        <div className="baseline-group">
+          <button
+            type="button"
+            className={`btn ${hasBaseline ? 'btn-good' : ''}`}
+            onClick={onToggleBaseline}
+            title="固定当前生命曲线作为虚线对比基准，方便调整剂量后直观对比"
+          >
+            {hasBaseline ? <PinOff size={14} /> : <Pin size={14} />}
+            {hasBaseline ? '清除基准对比' : '固定对比基准'}
+          </button>
+          {baselineLabel && (
+            <span className="baseline-tag mono" aria-live="polite" aria-atomic="true">
+              {baselineLabel}
+            </span>
+          )}
+        </div>
 
         <button
           type="button"
           className="btn"
-          onClick={onShareUrl}
-          title="将当前场景写入地址栏 #s=... 并复制分享链接"
+          onClick={onOpenShare}
+          title="打开场景分享与导入弹窗（同步将当前场景写入地址栏 #s=...）"
         >
-          <Link2 size={14} />
-          分享链接
-        </button>
-
-        <button
-          type="button"
-          className="btn"
-          onClick={onOpenImportUrl}
-          title="粘贴他人分享的场景 URL 或编码并导入"
-        >
-          <Download size={14} />
-          导入链接
+          <Link2 size={14} aria-hidden="true" />
+          分享 / 导入
         </button>
 
         <button
           type="button"
           className="btn"
           onClick={onResetScenario}
-          title="重置为空白场景（0 伤健康患者与空给药方案）并清除 URL 参数"
+          title="重置为空白场景（0 伤健康患者与空给药方案，支持在提示中撤销）"
         >
-          <RotateCcw size={14} />
+          <RotateCcw size={14} aria-hidden="true" />
           重置
         </button>
 

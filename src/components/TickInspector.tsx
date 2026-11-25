@@ -1,5 +1,5 @@
 import { Activity } from 'lucide-react';
-import { BLOOD_VOLUME_NORMAL, clamp } from '../engine/constants';
+import { BLOOD_VOLUME_NORMAL, MOB_STAT_ZH, clamp } from '../engine/constants';
 import { getDisplayColor } from '../engine/reagents';
 import type { OrganSlot, TickSnapshot } from '../engine/types';
 
@@ -48,31 +48,44 @@ export function TickInspector({ snapshot }: TickInspectorProps) {
           : '#64748b';
 
   return (
-    <section className="panel">
+    <section className="panel" aria-labelledby="tick-inspector-heading">
       <div className="panel-header">
-        <div className="panel-title">
-          <Activity size={15} style={{ color: 'var(--good)' }} />
+        <div className="panel-title" id="tick-inspector-heading">
+          <Activity size={15} style={{ color: 'var(--good)' }} aria-hidden="true" />
           生理切片检视 · <span className="mono">{snapshot.time}s</span>
         </div>
-        <span className={`stat-badge stat-${snapshot.stat}`}>{snapshot.stat}</span>
+        <span
+          className={`stat-badge stat-${snapshot.stat}`}
+          aria-label={`生理状态：${MOB_STAT_ZH[snapshot.stat]}`}
+        >
+          {MOB_STAT_ZH[snapshot.stat]}
+        </span>
       </div>
 
       <div className="panel-body">
         {/* HP bar */}
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 12 }}>
-            <span>生命值 (HP)</span>
+            <span id="tick-hp-label">生命值 (HP)</span>
             <strong className="mono" style={{ color: hpBarColor }}>
               {snapshot.health.toFixed(1)} / 100
             </strong>
           </div>
-          <div className="health-bar-track">
+          <div
+            className="health-bar-track"
+            role="progressbar"
+            aria-labelledby="tick-hp-label"
+            aria-valuemin={-100}
+            aria-valuemax={100}
+            aria-valuenow={Number(clamp(snapshot.health, -100, 100).toFixed(1))}
+            aria-valuetext={`${snapshot.health.toFixed(1)} / 100（${MOB_STAT_ZH[snapshot.stat]}）`}
+          >
             <div className="health-bar-fill" style={{ width: `${hpPct}%`, background: hpBarColor }} />
           </div>
         </div>
 
         {/* 5 Damage metrics */}
-        <div className="grid-3" style={{ textAlign: 'center' }}>
+        <div className="grid-3" style={{ textAlign: 'center' }} role="group" aria-label="当前伤害与有效血量">
           <div className="sub-box" style={{ padding: '5px 4px', gap: 2 }}>
             <span className="control-label">钝伤</span>
             <strong className="mono" style={{ color: 'var(--c-brute)' }}>
@@ -112,7 +125,7 @@ export function TickInspector({ snapshot }: TickInspectorProps) {
         </div>
 
         {/* Vitals row */}
-        <div className="grid-2" style={{ fontSize: 11.5 }}>
+        <div className="grid-2" style={{ fontSize: 11.5 }} role="group" aria-label="当前体温、血量与伤口">
           <div className="sub-box" style={{ gap: 3 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span className="control-label">体表/核心温</span>
@@ -143,10 +156,10 @@ export function TickInspector({ snapshot }: TickInspectorProps) {
 
         {/* Organs */}
         <div>
-          <div className="control-label" style={{ marginBottom: 5 }}>
+          <div className="control-label" id="tick-organs-label" style={{ marginBottom: 5 }}>
             器官状态
           </div>
-          <div className="organ-grid">
+          <div className="organ-grid" role="group" aria-labelledby="tick-organs-label">
             {ORGAN_ORDER.map(({ slot, label }) => {
               const o = snapshot.organs[slot];
               const pct = o.maxHealth > 0 ? clamp((o.damage / o.maxHealth) * 100, 0, 100) : 100;
@@ -160,8 +173,17 @@ export function TickInspector({ snapshot }: TickInspectorProps) {
                       : 'var(--good)';
               return (
                 <div className="organ-row" key={slot}>
-                  <span>{label}</span>
-                  <div className="health-bar-track" style={{ height: 6 }}>
+                  <span id={`tick-organ-${slot}-label`}>{label}</span>
+                  <div
+                    className="health-bar-track"
+                    style={{ height: 6 }}
+                    role="progressbar"
+                    aria-labelledby={`tick-organ-${slot}-label`}
+                    aria-valuemin={0}
+                    aria-valuemax={o.maxHealth > 0 ? o.maxHealth : 100}
+                    aria-valuenow={o.maxHealth > 0 ? Number(clamp(o.damage, 0, o.maxHealth).toFixed(1)) : 100}
+                    aria-valuetext={o.maxHealth > 0 ? `损伤 ${o.damage.toFixed(1)} / ${o.maxHealth}，${o.statusZh}` : '缺失'}
+                  >
                     <div className="health-bar-fill" style={{ width: `${pct}%`, background: col }} />
                   </div>
                   <span className="mono" style={{ textAlign: 'right', color: col, fontSize: 11 }}>
@@ -184,7 +206,7 @@ export function TickInspector({ snapshot }: TickInspectorProps) {
           snapshot.dizzy > 0 ||
           snapshot.jitter > 0 ||
           snapshot.disgust > 5) && (
-          <div className="quick-chips">
+          <div className="quick-chips" role="group" aria-label="生理状态效果与免疫特性">
             {snapshot.activeAllergens.length > 0 && (
               <span className="tag-chip danger">过敏发作: {snapshot.activeAllergens.join(' / ')}</span>
             )}
@@ -207,20 +229,20 @@ export function TickInspector({ snapshot }: TickInspectorProps) {
         )}
 
         {/* Active Blood Reagents */}
-        <div>
-          <div className="control-label" style={{ marginBottom: 4 }}>
+        <div role="region" aria-labelledby="tick-blood-reagents-label">
+          <div className="control-label" id="tick-blood-reagents-label" style={{ marginBottom: 4 }}>
             血液中试剂 ({snapshot.bloodReagents.length})
           </div>
           {snapshot.bloodReagents.length === 0 ? (
             <div className="dose-sub">血液中无残留试剂</div>
           ) : (
-            <table className="reagent-table mono">
+            <table className="reagent-table mono" aria-labelledby="tick-blood-reagents-label">
               <thead>
                 <tr>
-                  <th>试剂</th>
-                  <th>残留</th>
-                  <th>纯度</th>
-                  <th>周期 / OD</th>
+                  <th scope="col">试剂</th>
+                  <th scope="col">残留</th>
+                  <th scope="col">纯度</th>
+                  <th scope="col">周期 / OD</th>
                 </tr>
               </thead>
               <tbody>
@@ -228,7 +250,7 @@ export function TickInspector({ snapshot }: TickInspectorProps) {
                   <tr key={r.id}>
                     <td style={{ fontFamily: 'var(--font-sans)' }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                        <span className="color-dot" style={{ background: getDisplayColor(r.color) }} />
+                        <span className="color-dot" style={{ background: getDisplayColor(r.color) }} aria-hidden="true" />
                         <span>{r.zhName}</span>
                       </span>
                     </td>
@@ -263,7 +285,7 @@ export function TickInspector({ snapshot }: TickInspectorProps) {
 
         {/* Stomach & Active Transfers */}
         {(snapshot.stomachReagents.length > 0 || snapshot.activeTransfers.length > 0) && (
-          <div className="sub-box" style={{ gap: 4 }}>
+          <div className="sub-box" style={{ gap: 4 }} role="region" aria-label="胃内待吸收与持续输注">
             {snapshot.stomachReagents.length > 0 && (
               <>
                 <div className="control-label">胃内待吸收 ({snapshot.stomachReagents.length})</div>

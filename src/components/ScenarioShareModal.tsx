@@ -1,14 +1,14 @@
 import { Check, Copy, Link2, Upload, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { parseScenarioFromUrlOrText } from '../engine/scenarioShare';
 import type { SimScenario } from '../engine/types';
+import { useModalA11y } from './useModalA11y';
 
 interface ScenarioShareModalProps {
   open: boolean;
   onClose: () => void;
   shareUrl: string;
   onImportScenario: (scenario: SimScenario) => void;
-  initialNotice?: string | null;
 }
 
 export function ScenarioShareModal({
@@ -16,27 +16,22 @@ export function ScenarioShareModal({
   onClose,
   shareUrl,
   onImportScenario,
-  initialNotice,
 }: ScenarioShareModalProps) {
   const [importInput, setImportInput] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const shareTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const { dialogRef, backdropProps } = useModalA11y({
+    open,
+    onClose,
+    initialFocusRef: shareTextareaRef,
+  });
 
   useEffect(() => {
     if (!open) return;
     setImportError(null);
     setCopied(false);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      window.removeEventListener('keydown', handleKey);
-    };
-  }, [open, onClose]);
+  }, [open]);
 
   useEffect(() => {
     if (!copied) return;
@@ -72,25 +67,33 @@ export function ScenarioShareModal({
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-card" style={{ width: 'min(640px, 100%)' }} onClick={(e) => e.stopPropagation()}>
+    <div className="modal-backdrop" {...backdropProps}>
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        className="modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="share-modal-title"
+        style={{ width: 'min(640px, 100%)' }}
+      >
         <div className="modal-header">
-          <div className="panel-title">
-            <Link2 size={15} style={{ color: 'var(--accent)' }} />
+          <h2 id="share-modal-title" className="panel-title" style={{ margin: 0 }}>
+            <Link2 size={15} style={{ color: 'var(--accent)' }} aria-hidden="true" />
             场景 URL 分享与导入
-          </div>
-          <button type="button" className="btn btn-icon" onClick={onClose} aria-label="关闭弹窗">
-            <X size={15} />
+          </h2>
+          <button
+            type="button"
+            className="btn btn-icon"
+            style={{ minWidth: 32, minHeight: 32 }}
+            onClick={onClose}
+            aria-label="关闭弹窗"
+          >
+            <X size={15} aria-hidden="true" />
           </button>
         </div>
 
         <div className="modal-body">
-          {initialNotice && (
-            <div className="warning-banner warn">
-              <span>{initialNotice}</span>
-            </div>
-          )}
-
           <div className="sub-box">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
               <span className="control-label" style={{ fontWeight: 600, color: 'var(--text)' }}>
@@ -99,6 +102,7 @@ export function ScenarioShareModal({
               <span className="dose-sub mono">{shareUrl.length} 字符</span>
             </div>
             <textarea
+              ref={shareTextareaRef}
               readOnly
               className="ui-input mono"
               rows={3}
@@ -110,7 +114,7 @@ export function ScenarioShareModal({
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
               <span className="dose-sub">包含完整患者伤势、过敏设置、给药组合及模拟参数；他人打开链接即可自动复现。</span>
               <button type="button" className="btn btn-primary btn-sm" onClick={() => void handleCopyUrl()}>
-                {copied ? <Check size={12} /> : <Copy size={12} />}
+                {copied ? <Check size={12} aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
                 {copied ? '已复制链接' : '复制链接'}
               </button>
             </div>
@@ -127,6 +131,7 @@ export function ScenarioShareModal({
               rows={3}
               style={{ width: '100%', resize: 'vertical', fontSize: 11.5 }}
               placeholder="粘贴完整分享 URL、#s=... 片段或分享编码串..."
+              aria-label="通过 URL 或编码串导入场景"
               value={importInput}
               onChange={(e) => {
                 setImportInput(e.target.value);
@@ -134,7 +139,7 @@ export function ScenarioShareModal({
               }}
             />
             {importError && (
-              <div className="warning-banner danger">
+              <div className="warning-banner danger" role="alert">
                 <span>{importError}</span>
               </div>
             )}

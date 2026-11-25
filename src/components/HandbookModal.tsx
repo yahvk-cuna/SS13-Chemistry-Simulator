@@ -12,6 +12,7 @@ import {
   isPurityIndependentEffect,
 } from '../engine/reagents';
 import type { ReagentDef } from '../engine/types';
+import { useModalA11y } from './useModalA11y';
 
 interface HandbookModalProps {
   open: boolean;
@@ -40,31 +41,25 @@ export function HandbookModal({
   const [closeOnAdd, setCloseOnAdd] = useState(false);
   const [justAddedName, setJustAddedName] = useState<string | null>(null);
   const wasOpenRef = useRef(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const patientAllergySet = useMemo(() => new Set(patientAllergies), [patientAllergies]);
+  const { dialogRef, backdropProps } = useModalA11y({
+    open,
+    onClose,
+    initialFocusRef: searchInputRef,
+  });
 
   useEffect(() => {
-    if (open && !wasOpenRef.current && initialQuery !== undefined) {
-      setSearch(initialQuery);
-      if (initialQuery) {
-        setSelectedTraits([]);
+    if (open && !wasOpenRef.current) {
+      if (initialQuery !== undefined) {
+        setSearch(initialQuery);
+        if (initialQuery) {
+          setSelectedTraits([]);
+        }
       }
     }
     wasOpenRef.current = open;
   }, [open, initialQuery]);
-
-  useEffect(() => {
-    if (!open) return;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      window.removeEventListener('keydown', handleKey);
-    };
-  }, [open, onClose]);
 
   useEffect(() => {
     if (!justAddedName) return;
@@ -152,10 +147,20 @@ export function HandbookModal({
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-card" style={{ width: 'min(1140px, 100%)' }} onClick={(e) => e.stopPropagation()}>
+    <div className="modal-backdrop" {...backdropProps}>
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        className="modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="handbook-modal-title"
+        style={{ width: 'min(1140px, 100%)' }}
+      >
         <div className="modal-header">
-          <div className="panel-title">天关13 药品图鉴与选药库（源码精确参数）</div>
+          <h2 id="handbook-modal-title" className="panel-title" style={{ margin: 0 }}>
+            天关13 药品图鉴与选药库（源码精确参数）
+          </h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {justAddedName && <span className="tag-chip good">已加入方案：{justAddedName}</span>}
             {onAddReagent && (
@@ -170,8 +175,14 @@ export function HandbookModal({
             <button type="button" className="btn btn-sm" onClick={onClose}>
               完成
             </button>
-            <button type="button" className="btn btn-icon" onClick={onClose} aria-label="关闭图鉴">
-              <X size={15} />
+            <button
+              type="button"
+              className="btn btn-icon"
+              style={{ minWidth: 32, minHeight: 32 }}
+              onClick={onClose}
+              aria-label="关闭图鉴"
+            >
+              <X size={15} aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -181,6 +192,7 @@ export function HandbookModal({
             <div className="search-wrap" style={{ minWidth: 240 }}>
               <Search
                 size={14}
+                aria-hidden="true"
                 style={{
                   position: 'absolute',
                   left: 10,
@@ -189,8 +201,8 @@ export function HandbookModal({
                 }}
               />
               <input
+                ref={searchInputRef}
                 type="text"
-                autoFocus
                 className="ui-input"
                 style={{ width: '100%', paddingLeft: 30, paddingRight: search ? 28 : 8 }}
                 placeholder="搜索药品名、英文名、Wiki别名、特征或药理机制..."
@@ -202,9 +214,12 @@ export function HandbookModal({
                   type="button"
                   className="search-clear-btn"
                   aria-label="清空搜索"
-                  onClick={() => setSearch('')}
+                  onClick={() => {
+                    setSearch('');
+                    searchInputRef.current?.focus();
+                  }}
                 >
-                  <X size={13} />
+                  <X size={13} aria-hidden="true" />
                 </button>
               )}
             </div>

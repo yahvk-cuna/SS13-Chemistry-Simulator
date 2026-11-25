@@ -1,19 +1,37 @@
 import { X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AboutModal } from './components/AboutModal';
 import { EventLog } from './components/EventLog';
 import { HandbookModal } from './components/HandbookModal';
 import { HeaderBar } from './components/HeaderBar';
 import { PatientPanel } from './components/PatientPanel';
 import { RegimenPanel } from './components/RegimenPanel';
+import { ResultJumpButton } from './components/ResultJumpButton';
 import { ScenarioShareModal } from './components/ScenarioShareModal';
 import { SummaryStrip } from './components/SummaryStrip';
 import { TickInspector } from './components/TickInspector';
 import { TimelineCharts } from './components/TimelineCharts';
+import { MOB_STAT_ZH } from './engine/constants';
 import { createDefaultDose } from './engine/regimenStorage';
-import { buildScenarioShareUrl, createBlankScenario, tryReadScenarioFromHash } from './engine/scenarioShare';
+import {
+  buildScenarioShareUrl,
+  createBlankScenario,
+  encodeScenarioPayload,
+  tryReadScenarioFromHash,
+} from './engine/scenarioShare';
+import { loadScenarioFromStorage, saveScenarioToStorage } from './engine/scenarioStorage';
 import { runSimulation } from './engine/simulator';
 import type { DoseEvent, PatientConfig, ReagentDef, RngMode, SimResult, SimScenario } from './engine/types';
+
+interface BannerNotice {
+  type: 'good' | 'warn';
+  text: string;
+  action?: {
+    label: string;
+    onAction: () => void;
+  };
+  durationMs?: number;
+}
 
 function clonePatient(p: PatientConfig): PatientConfig {
   return { ...p, organs: { ...p.organs }, allergies: [...(p.allergies ?? [])] };
@@ -23,13 +41,45 @@ function cloneDoses(doses: DoseEvent[]): DoseEvent[] {
   return doses.map((d) => ({ ...d }));
 }
 
-function readInitialScenarioState(): { scenario: SimScenario; hashError: string | null } {
+function cloneScenario(scenario: SimScenario): SimScenario {
+  return {
+    patient: clonePatient(scenario.patient),
+    doses: cloneDoses(scenario.doses),
+    durationSeconds: scenario.durationSeconds,
+    rngMode: scenario.rngMode,
+    seed: scenario.seed,
+  };
+}
+
+const BLANK_SCENARIO_PAYLOAD = encodeScenarioPayload(createBlankScenario());
+
+function isNonBlankScenario(scenario: SimScenario): boolean {
+  return encodeScenarioPayload(scenario) !== BLANK_SCENARIO_PAYLOAD;
+}
+
+function readInitialScenarioState(): {
+  scenario: SimScenario;
+  hashError: string | null;
+  restoredFromStorage: boolean;
+} {
   if (typeof window !== 'undefined') {
-    const { scenario, error } = tryReadScenarioFromHash(window.location.hash);
-    if (scenario) return { scenario, hashError: null };
-    if (error) return { scenario: createBlankScenario(), hashError: error };
+    const { scenario: hashScenario, error: hashError } = tryReadScenarioFromHash(window.location.hash);
+    if (hashScenario) {
+      return { scenario: hashScenario, hashError: null, restoredFromStorage: false };
+    }
+    const storedScenario = loadScenarioFromStorage();
+    if (storedScenario) {
+      return {
+        scenario: storedScenario,
+        hashError,
+        restoredFromStorage: isNonBlankScenario(storedScenario),
+      };
+    }
+    if (hashError) {
+      return { scenario: createBlankScenario(), hashError, restoredFromStorage: false };
+    }
   }
-  return { scenario: createBlankScenario(), hashError: null };
+  return { scenario: createBlankScenario(), hashError: null, restoredFromStorage: false };
 }
 
 export function App() {
@@ -48,11 +98,16 @@ export function App() {
   const [handbookOpen, setHandbookOpen] = useState<boolean>(false);
   const [handbookQuery, setHandbookQuery] = useState<string>('');
   const [shareModalOpen, setShareModalOpen] = useState<boolean>(false);
-  const [shareModalNotice, setShareModalNotice] = useState<string | null>(null);
   const [aboutOpen, setAboutOpen] = useState<boolean>(false);
-  const [bannerNotice, setBannerNotice] = useState<{ type: 'good' | 'warn'; text: string } | null>(() =>
-    initialBoot.hashError ? { type: 'warn', text: initialBoot.hashError } : null,
-  );
+  const [bannerNotice, setBannerNotice] = useState<BannerNotice | null>(() => {
+    if (initialBoot.hashError) {
+      return { type: 'warn', text: initialBoot.hashError };
+    }
+    if (initialBoot.restoredFromStorage) {
+      return { type: 'good', text: '已恢复上次编辑的场景。' };
+    }
+    return null;
+  });
 
   const doseCountsByReagent = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -66,6 +121,8 @@ export function App() {
     () => ({ patient, doses, durationSeconds, rngMode, seed }),
     [patient, doses, durationSeconds, rngMode, seed],
   );
+  const latestScenarioRef = useRef<SimScenario>(currentScenario);
+  latestScenarioRef.current = currentScenario;
 
   const currentShareUrl = useMemo(() => buildScenarioShareUrl(currentScenario), [currentScenario]);
 
@@ -73,6 +130,32 @@ export function App() {
     () => runSimulation(patient, doses, { durationSeconds, rngMode, seed }),
     [patient, doses, durationSeconds, rngMode, seed],
   );
+
+  // Debounced auto-save to localStorage on scenario changes
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      saveScenarioToStorage(currentScenario);
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [currentScenario]);
+
+  // Flush latest scenario immediately when page hides
+  useEffect(() => {
+    const flushScenario = () => {
+      saveScenarioToStorage(latestScenarioRef.current);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        flushScenario();
+      }
+    };
+    window.addEventListener('pagehide', flushScenario);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('pagehide', flushScenario);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, []);
 
   // Sync state when browser URL hash changes externally
   useEffect(() => {
@@ -99,7 +182,7 @@ export function App() {
   // Auto-dismiss transient good notices
   useEffect(() => {
     if (!bannerNotice || bannerNotice.type !== 'good') return;
-    const timer = window.setTimeout(() => setBannerNotice(null), 3500);
+    const timer = window.setTimeout(() => setBannerNotice(null), bannerNotice.durationMs ?? 3500);
     return () => window.clearTimeout(timer);
   }, [bannerNotice]);
 
@@ -137,40 +220,67 @@ export function App() {
     setBaselineResult(null);
   };
 
-  const handleShareUrl = async () => {
+  const handleOpenShare = () => {
     const shareUrl = buildScenarioShareUrl(currentScenario);
     if (typeof window !== 'undefined' && window.history?.replaceState) {
       window.history.replaceState(null, '', shareUrl);
     }
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(shareUrl);
-        setBannerNotice({ type: 'good', text: `已同步地址栏并复制分享链接（${shareUrl.length} 字符）` });
-        return;
-      }
-    } catch {
-      // Fallback to share modal below
-    }
-    setShareModalNotice('未能直接访问剪贴板，可在下方文本框手动复制场景 URL。');
     setShareModalOpen(true);
   };
 
-  const handleImportScenario = (scenario: SimScenario) => {
-    applyScenario(scenario);
-    const shareUrl = buildScenarioShareUrl(scenario);
+  const replaceScenarioWithUndo = (
+    nextScenario: SimScenario,
+    options: {
+      nextUrl: string;
+      noticeText: string;
+      undoNoticeText: string;
+    },
+  ) => {
+    const snapshot = cloneScenario(currentScenario);
+    const previousUrl =
+      typeof window !== 'undefined'
+        ? `${window.location.pathname}${window.location.search}${window.location.hash}`
+        : '';
+
+    applyScenario(nextScenario);
     if (typeof window !== 'undefined' && window.history?.replaceState) {
-      window.history.replaceState(null, '', shareUrl);
+      window.history.replaceState(null, '', options.nextUrl);
     }
-    setBannerNotice({ type: 'good', text: `已从链接导入场景（${scenario.doses.length} 项给药，${scenario.durationSeconds}s）` });
+
+    setBannerNotice({
+      type: 'good',
+      text: options.noticeText,
+      durationMs: 8000,
+      action: {
+        label: '撤销',
+        onAction: () => {
+          applyScenario(snapshot);
+          if (typeof window !== 'undefined' && window.history?.replaceState) {
+            window.history.replaceState(null, '', previousUrl);
+          }
+          setBannerNotice({ type: 'good', text: options.undoNoticeText });
+        },
+      },
+    });
+  };
+
+  const handleImportScenario = (scenario: SimScenario) => {
+    replaceScenarioWithUndo(scenario, {
+      nextUrl: buildScenarioShareUrl(scenario),
+      noticeText: `已从链接导入场景（${scenario.doses.length} 项给药，${scenario.durationSeconds}s）`,
+      undoNoticeText: '已撤销导入。',
+    });
   };
 
   const handleResetScenario = () => {
     const blank = createBlankScenario();
-    applyScenario(blank);
-    if (typeof window !== 'undefined' && window.history?.replaceState) {
-      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
-    }
-    setBannerNotice({ type: 'good', text: '已重置为空白场景。' });
+    const baseUrl =
+      typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : '';
+    replaceScenarioWithUndo(blank, {
+      nextUrl: baseUrl,
+      noticeText: '已重置为空白场景。',
+      undoNoticeText: '已撤销重置。',
+    });
   };
 
   const handlePatientChange = (next: PatientConfig) => {
@@ -189,6 +299,14 @@ export function App() {
     result.snapshots[Math.min(result.snapshots.length - 1, Math.max(0, Math.round(selectedTime / 2)))] ??
     result.snapshots[0];
 
+  const baselineLabel = useMemo(() => {
+    if (!baselineResult) return null;
+    const baseDuration =
+      baselineResult.snapshots[baselineResult.snapshots.length - 1]?.time ?? durationSeconds;
+    const statLabel = MOB_STAT_ZH[baselineResult.summary.finalStat];
+    return `基准：HP ${baselineResult.summary.finalHealth.toFixed(1)} · ${statLabel} · ${baseDuration}s`;
+  }, [baselineResult, durationSeconds]);
+
   return (
     <div className="app-shell">
       <HeaderBar
@@ -199,12 +317,9 @@ export function App() {
         seed={seed}
         onSeedChange={setSeed}
         hasBaseline={baselineResult !== null}
+        baselineLabel={baselineLabel}
         onToggleBaseline={() => setBaselineResult((prev) => (prev ? null : result))}
-        onShareUrl={() => void handleShareUrl()}
-        onOpenImportUrl={() => {
-          setShareModalNotice(null);
-          setShareModalOpen(true);
-        }}
+        onOpenShare={handleOpenShare}
         onResetScenario={handleResetScenario}
         onOpenHandbook={() => {
           setHandbookQuery('');
@@ -215,22 +330,7 @@ export function App() {
 
       <main className="workspace-grid">
         {/* Left Column: Patient & Regimen Controls */}
-        <div className="col-stack">
-          {bannerNotice && (
-            <div className={`warning-banner ${bannerNotice.type === 'warn' ? 'warn' : 'info'}`} style={{ fontSize: 11.5 }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6 }}>
-                <span>{bannerNotice.text}</span>
-                <button
-                  type="button"
-                  style={{ background: 'transparent', border: 'none', padding: 0, display: 'inline-flex', flexShrink: 0 }}
-                  onClick={() => setBannerNotice(null)}
-                  aria-label="关闭通知"
-                >
-                  <X size={13} />
-                </button>
-              </div>
-            </div>
-          )}
+        <div className="col-stack col-left">
           <PatientPanel patient={patient} onChange={handlePatientChange} />
           <RegimenPanel
             doses={doses}
@@ -249,7 +349,7 @@ export function App() {
         </div>
 
         {/* Center Column: Summary KPIs & Synchronized Interactive Charts */}
-        <div className="col-stack">
+        <div id="result-section" className="col-stack col-center">
           <SummaryStrip
             summary={result.summary}
             baselineSummary={baselineResult ? baselineResult.summary : null}
@@ -289,6 +389,47 @@ export function App() {
         </div>
       </main>
 
+      <ResultJumpButton summary={result.summary} targetId="result-section" />
+
+      <div
+        className="toast-container"
+        role={bannerNotice?.type === 'warn' ? 'alert' : 'status'}
+        aria-live={bannerNotice?.type === 'warn' ? 'assertive' : 'polite'}
+        aria-atomic="true"
+      >
+        {bannerNotice && (
+          <div className={`warning-banner toast-banner ${bannerNotice.type === 'warn' ? 'warn' : 'good'}`}>
+            <div className="toast-content">
+              <span className="toast-text">{bannerNotice.text}</span>
+              <div className="toast-actions">
+                {bannerNotice.action && (
+                  <button
+                    type="button"
+                    className="toast-action-btn"
+                    onClick={() => {
+                      const action = bannerNotice.action;
+                      setBannerNotice(null);
+                      action?.onAction();
+                    }}
+                  >
+                    {bannerNotice.action.label}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="toast-close-btn"
+                  onClick={() => setBannerNotice(null)}
+                  aria-label="关闭通知"
+                  title="关闭通知"
+                >
+                  <X size={15} aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       <HandbookModal
         open={handbookOpen}
         onClose={() => setHandbookOpen(false)}
@@ -304,7 +445,6 @@ export function App() {
         onClose={() => setShareModalOpen(false)}
         shareUrl={currentShareUrl}
         onImportScenario={handleImportScenario}
-        initialNotice={shareModalNotice}
       />
 
       <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />

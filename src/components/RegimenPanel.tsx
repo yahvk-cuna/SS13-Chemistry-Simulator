@@ -15,8 +15,10 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import { type ChangeEvent, useEffect, useMemo, useState } from 'react';
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { PATCH_MAX_VOLUME, PATCH_TRANSFER_PER_TICK } from '../engine/constants';
+import { NumericInput } from './NumericInput';
+import { ReagentFloat } from './ReagentFloat';
 import {
   REAGENTS,
   computeEffectiveOD,
@@ -91,14 +93,26 @@ export function RegimenPanel({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmOverwriteId, setConfirmOverwriteId] = useState<string | null>(null);
   const [collapsedIds, setCollapsedIds] = useState<Record<string, boolean>>({});
-  const [hoveredInfo, setHoveredInfo] = useState<{ def: ReagentDef; x: number; y: number } | null>(null);
+  const [openPopovers, setOpenPopovers] = useState<{ doseId: string; z: number }[]>([]);
+  const [hoveredInfo, setHoveredInfo] = useState<{ def: ReagentDef; anchor: HTMLElement } | null>(null);
+  const popoverRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const popoverZRef = useRef(0);
+  const doseNameBtnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const showHoverTooltip = (def: ReagentDef, el: HTMLElement) => {
-    const rect = el.getBoundingClientRect();
-    const x = Math.min(rect.right + 10, Math.max(12, window.innerWidth - 310));
-    const y = Math.min(Math.max(12, rect.top - 8), Math.max(12, window.innerHeight - 200));
-    setHoveredInfo({ def, x, y });
+    setHoveredInfo({ def, anchor: el });
   };
+
+  useEffect(() => {
+    if (!hoveredInfo) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setHoveredInfo(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [hoveredInfo]);
 
   useEffect(() => {
     if (!feedbackMsg) return;
@@ -453,14 +467,6 @@ export function RegimenPanel({
     [doses],
   );
 
-  const duplicateDose = (dose: DoseEvent) => {
-    const copy: DoseEvent = {
-      ...dose,
-      id: `dose-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    };
-    onChange([...doses, copy]);
-  };
-
   const removeDose = (id: string) => {
     onChange(doses.filter((d) => d.id !== id));
   };
@@ -583,11 +589,135 @@ export function RegimenPanel({
     return warnings;
   }, [doses, patientAllergySet, hasChemicalAllergy, patchGroupSummaries]);
 
+  const openPopoverEntries = useMemo(
+    () =>
+      openPopovers.flatMap(({ doseId, z }) => {
+        const dose = doses.find((d) => d.id === doseId);
+        const def = dose ? REAGENTS[dose.reagentId] : undefined;
+        return dose && def ? [{ dose, def, z }] : [];
+      }),
+    [openPopovers, doses],
+  );
+
+  useEffect(() => {
+    if (openPopoverEntries.length === openPopovers.length) return;
+    setOpenPopovers((prev) => prev.filter((p) => openPopoverEntries.some((e) => e.dose.id === p.doseId)));
+  }, [openPopovers, openPopoverEntries]);
+
+  const closePopover = (doseId: string) => {
+    setOpenPopovers((prev) => prev.filter((p) => p.doseId !== doseId));
+  };
+
+  const bringPopoverToFront = (doseId: string) => {
+    const z = ++popoverZRef.current;
+    setOpenPopovers((prev) => {
+      const current = prev.find((p) => p.doseId === doseId);
+      if (!current || prev.every((p) => p.z <= current.z)) return prev;
+      return prev.map((p) => (p.doseId === doseId ? { ...p, z } : p));
+    });
+  };
+
+  useEffect(() => {
+    if (openPopovers.length === 0) return;
+
+    const handlePointerDown = (e: PointerEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      for (const [doseId, el] of Object.entries(popoverRefs.current)) {
+        if (el?.contains(target)) {
+          bringPopoverToFront(doseId);
+          return;
+        }
+      }
+      for (const btn of Object.values(doseNameBtnRefs.current)) {
+        if (btn?.contains(target)) return;
+      }
+      setOpenPopovers([]);
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const top = openPopovers.reduce((a, b) => (b.z > a.z ? b : a));
+      closePopover(top.doseId);
+      doseNameBtnRefs.current[top.doseId]?.focus();
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openPopovers]);
+
+  const toggleDosePopover = (doseId: string) => {
+    setHoveredInfo(null);
+    const z = ++popoverZRef.current;
+    setOpenPopovers((prev) =>
+      prev.some((p) => p.doseId === doseId) ? prev.filter((p) => p.doseId !== doseId) : [...prev, { doseId, z }],
+    );
+  };
+
+  const renderReagentDetails = (def: ReagentDef, showTitle: boolean) => (
+    <>
+      {showTitle ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 12.5 }}>
+            <span className="color-dot" style={{ background: getDisplayColor(def.color) }} aria-hidden="true" />
+            <span>{def.zhName}</span>
+            <span className="dose-sub">{def.enName}</span>
+          </div>
+          <span className="tag-chip mono">pH {def.ph}</span>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+          <span className="control-label">机制与特性</span>
+          <span className="tag-chip mono">pH {def.ph}</span>
+        </div>
+      )}
+
+      <div className="quick-chips">
+        {isNoAllergyReagent(def) && <span className="tag-chip good">无过敏</span>}
+        {isPurityIndependentEffect(def) && <span className="tag-chip">纯度无关效果</span>}
+        {patientAllergySet.has(def.id) && <span className="tag-chip danger">患者过敏原</span>}
+        {hasChemicalAllergy && isChemicalAllergyTrigger(def) && (
+          <span className="tag-chip warn">触发化学过敏</span>
+        )}
+        {def.targets.map((t) => (
+          <span key={t} className="tag-chip">
+            {t}
+          </span>
+        ))}
+      </div>
+
+      <div className="mono" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 10px', fontSize: 11 }}>
+        <span>代谢 {(def.metabolizationRate * 2).toFixed(2)}u/t</span>
+        <span style={{ color: def.overdoseThreshold > 0 ? 'var(--warn)' : 'var(--text-dim)' }}>
+          {def.overdoseThreshold > 0
+            ? `OD ${def.overdoseThreshold}u (基准${Math.round(def.defaultPurity * 100)}%)`
+            : '无OD'}
+        </span>
+        {def.inverseChemVal > 0 && (
+          <span style={{ color: 'var(--warn)' }}>
+            逆 &lt;{Math.round(def.inverseChemVal * 100)}% →{' '}
+            {REAGENTS[def.inverseChemId ?? '']?.zhName ?? '逆产物'}
+          </span>
+        )}
+      </div>
+
+      <div style={{ fontSize: 11.5, lineHeight: 1.45, color: 'var(--text)' }}>{def.summaryZh}</div>
+      {def.mechanicsNoteZh && (
+        <div style={{ fontSize: 11, lineHeight: 1.45, color: 'var(--text-muted)' }}>{def.mechanicsNoteZh}</div>
+      )}
+    </>
+  );
+
   return (
     <section className="panel">
       <div className="panel-header">
         <div className="panel-title">
-          <Syringe size={15} style={{ color: 'var(--accent)' }} />
+          <Syringe size={15} style={{ color: 'var(--accent)' }} aria-hidden="true" />
           给药组合方案 ({doses.filter((d) => d.enabled).length} 项启用)
         </div>
         <div style={{ display: 'flex', gap: 5 }}>
@@ -598,24 +728,30 @@ export function RegimenPanel({
               title="清空当前全部给药条目"
               onClick={handleClearDoses}
             >
-              <Trash2 size={12} />
+              <Trash2 size={12} aria-hidden="true" />
               {confirmClear ? '确认清空?' : '清空'}
             </button>
           )}
           <button type="button" className="btn btn-primary btn-sm" onClick={onOpenReagentLibrary}>
-            <Plus size={13} />
+            <Plus size={13} aria-hidden="true" />
             添加药品
           </button>
         </div>
       </div>
 
       <div className="panel-body">
-        <button type="button" className="collapse-btn" onClick={() => setSavedOpen((v) => !v)}>
+        <button
+          type="button"
+          className="collapse-btn"
+          aria-expanded={savedOpen}
+          aria-controls="regimen-saved-panel"
+          onClick={() => setSavedOpen((v) => !v)}
+        >
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <Bookmark size={13} style={{ color: 'var(--accent)' }} />
+            <Bookmark size={13} style={{ color: 'var(--accent)' }} aria-hidden="true" />
             <span>方案存档与导入导出 ({savedRegimens.length})</span>
           </span>
-          {savedOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          {savedOpen ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
         </button>
 
         {feedbackMsg && (
@@ -646,7 +782,7 @@ export function RegimenPanel({
         )}
 
         {savedOpen && (
-          <div className="sub-box">
+          <div id="regimen-saved-panel" className="sub-box">
             <div style={{ display: 'flex', gap: 6 }}>
               <input
                 type="text"
@@ -680,7 +816,7 @@ export function RegimenPanel({
                 title="仅复制当前正在编排的给药方案 JSON"
                 onClick={handleCopyCurrentJson}
               >
-                <Copy size={11} />
+                <Copy size={11} aria-hidden="true" />
                 复制当前 JSON
               </button>
               <button
@@ -690,7 +826,7 @@ export function RegimenPanel({
                 title="导出全部已保存方案为 JSON 文件"
                 onClick={handleDownloadAllJson}
               >
-                <Download size={11} />
+                <Download size={11} aria-hidden="true" />
                 导出全部
               </button>
               <button
@@ -835,25 +971,28 @@ export function RegimenPanel({
                             type="button"
                             className="btn btn-icon"
                             title="复制此单套方案纯文本配方"
+                            aria-label="复制此单套方案纯文本配方"
                             onClick={() => void handleCopyPlainText(item.doses, item.name, true)}
                           >
-                            <FileText size={11} />
+                            <FileText size={12} aria-hidden="true" />
                           </button>
                           <button
                             type="button"
                             className="btn btn-icon"
                             title="复制此单套方案 JSON"
+                            aria-label="复制此单套方案 JSON"
                             onClick={() => void copyJsonPayload([item], `已复制方案「${item.name}」JSON`)}
                           >
-                            <Copy size={11} />
+                            <Copy size={12} aria-hidden="true" />
                           </button>
                           <button
                             type="button"
                             className={`btn btn-danger ${isConfirmDelete ? 'btn-sm' : 'btn-icon'}`}
                             title="删除此存档（需二次点击确认）"
+                            aria-label={isConfirmDelete ? undefined : '删除此存档（需二次点击确认）'}
                             onClick={() => handleDeleteRegimen(item)}
                           >
-                            {isConfirmDelete ? '确认删?' : <Trash2 size={12} />}
+                            {isConfirmDelete ? '确认删?' : <Trash2 size={12} aria-hidden="true" />}
                           </button>
                         </div>
                       </div>
@@ -865,16 +1004,22 @@ export function RegimenPanel({
           </div>
         )}
 
-        <button type="button" className="collapse-btn" onClick={() => setPlainTextOpen((v) => !v)}>
+        <button
+          type="button"
+          className="collapse-btn"
+          aria-expanded={plainTextOpen}
+          aria-controls="regimen-plaintext-panel"
+          onClick={() => setPlainTextOpen((v) => !v)}
+        >
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <FileText size={13} style={{ color: 'var(--accent)' }} />
+            <FileText size={13} style={{ color: 'var(--accent)' }} aria-hidden="true" />
             <span>导出纯文本配方</span>
           </span>
-          {plainTextOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          {plainTextOpen ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
         </button>
 
         {plainTextOpen && (
-          <div className="sub-box">
+          <div id="regimen-plaintext-panel" className="sub-box">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, flexWrap: 'wrap' }}>
               <div className="seg-toggle">
                 <button
@@ -1036,6 +1181,8 @@ export function RegimenPanel({
           if (!def) return null;
           const effOD = computeEffectiveOD(def, dose.purity);
           const isCollapsed = Boolean(collapsedIds[dose.id]);
+          const isPopoverOpen = openPopovers.some((p) => p.doseId === dose.id);
+          const popoverId = `dose-popover-${dose.id}`;
           const methodShort = DELIVERY_OPTIONS.find((m) => m.value === dose.method)?.short ?? dose.method;
           const purityPresets = def.defaultPurity === 0.5 ? [0.5, 0.75, 1] : [0.75, 1];
           const hitsExtremeAllergy = patientAllergySet.has(dose.reagentId);
@@ -1062,6 +1209,8 @@ export function RegimenPanel({
                     className="btn btn-icon"
                     style={{ width: 22, height: 22 }}
                     title={isCollapsed ? '展开参数' : '收起参数'}
+                    aria-label={isCollapsed ? '展开参数' : '收起参数'}
+                    aria-expanded={!isCollapsed}
                     onClick={() =>
                       setCollapsedIds((prev) => ({
                         ...prev,
@@ -1069,36 +1218,55 @@ export function RegimenPanel({
                       }))
                     }
                   >
-                    {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                    {isCollapsed ? <ChevronRight size={12} aria-hidden="true" /> : <ChevronDown size={12} aria-hidden="true" />}
                   </button>
-                  <label
-                    className="dose-name"
-                    style={{ cursor: 'pointer', flex: 1 }}
-                    onMouseEnter={(e) => showHoverTooltip(def, e.currentTarget)}
-                    onMouseLeave={() => setHoveredInfo(null)}
-                  >
+                  <div className="dose-name" style={{ flex: 1 }}>
                     <input
                       type="checkbox"
                       checked={dose.enabled}
+                      aria-label={`启用 ${def.zhName}`}
                       onChange={(e) => updateDose(dose.id, { enabled: e.target.checked })}
                     />
-                    <span className="color-dot" style={{ background: getDisplayColor(def.color) }} />
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {def.zhName}
-                    </span>
-                    <span className="dose-sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {def.enName}
-                    </span>
-                    {hitsExtremeAllergy ? (
-                      <span className="allergy-badge" style={{ flexShrink: 0 }}>
-                        过敏原
+                    <button
+                      ref={(el) => {
+                        if (el) {
+                          doseNameBtnRefs.current[dose.id] = el;
+                        } else {
+                          delete doseNameBtnRefs.current[dose.id];
+                        }
+                      }}
+                      type="button"
+                      className="dose-name-btn"
+                      aria-expanded={isPopoverOpen}
+                      aria-haspopup="dialog"
+                      aria-controls={popoverId}
+                      title={isPopoverOpen ? '关闭药品详情悬浮窗' : '查看药品机制与特性'}
+                      onClick={() => toggleDosePopover(dose.id)}
+                      onPointerEnter={(e) => {
+                        if (e.pointerType === 'mouse' && !isPopoverOpen) {
+                          showHoverTooltip(def, e.currentTarget);
+                        }
+                      }}
+                      onPointerLeave={() => setHoveredInfo(null)}
+                    >
+                      <span className="color-dot" style={{ background: getDisplayColor(def.color) }} aria-hidden="true" />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {def.zhName}
                       </span>
-                    ) : hitsChemicalAllergy ? (
-                      <span className="allergy-badge" style={{ flexShrink: 0 }}>
-                        化学过敏
+                      <span className="dose-sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {def.enName}
                       </span>
-                    ) : null}
-                  </label>
+                      {hitsExtremeAllergy ? (
+                        <span className="allergy-badge" style={{ flexShrink: 0 }}>
+                          过敏原
+                        </span>
+                      ) : hitsChemicalAllergy ? (
+                        <span className="allergy-badge" style={{ flexShrink: 0 }}>
+                          化学过敏
+                        </span>
+                      ) : null}
+                    </button>
+                  </div>
                 </div>
                 <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                   {onInspectReagent && (
@@ -1106,26 +1274,20 @@ export function RegimenPanel({
                       type="button"
                       className="btn btn-icon"
                       title="在药品图鉴中查看详参"
+                      aria-label="在药品图鉴中查看详参"
                       onClick={() => onInspectReagent(def)}
                     >
-                      <BookOpen size={12} />
+                      <BookOpen size={12} aria-hidden="true" />
                     </button>
                   )}
                   <button
                     type="button"
-                    className="btn btn-icon"
-                    title="复制一项"
-                    onClick={() => duplicateDose(dose)}
-                  >
-                    <Copy size={12} />
-                  </button>
-                  <button
-                    type="button"
                     className="btn btn-icon btn-danger"
                     title="移除"
+                    aria-label="移除"
                     onClick={() => removeDose(dose.id)}
                   >
-                    <Trash2 size={12} />
+                    <Trash2 size={12} aria-hidden="true" />
                   </button>
                 </div>
               </div>
@@ -1147,14 +1309,14 @@ export function RegimenPanel({
                       value={dose.volume}
                       onChange={(e) => updateDose(dose.id, { volume: Number(e.target.value) })}
                     />
-                    <input
-                      type="number"
+                    <NumericInput
                       className="num-input-sm"
-                      min={0.1}
+                      min={0}
                       max={500}
                       step={0.5}
+                      fallback={0}
                       value={dose.volume}
-                      onChange={(e) => updateDose(dose.id, { volume: Math.max(0, Number(e.target.value) || 0) })}
+                      onCommit={(v) => updateDose(dose.id, { volume: v })}
                     />
                   </div>
 
@@ -1180,15 +1342,16 @@ export function RegimenPanel({
                       <div className="control-label" style={{ marginBottom: 3 }}>
                         给药时间 (s)
                       </div>
-                      <input
-                        type="number"
+                      <NumericInput
                         className="ui-input mono"
                         style={{ width: '100%' }}
                         min={0}
                         max={600}
                         step={2}
+                        integer
+                        fallback={0}
                         value={dose.startTime}
-                        onChange={(e) => updateDose(dose.id, { startTime: Math.max(0, Number(e.target.value) || 0) })}
+                        onCommit={(v) => updateDose(dose.id, { startTime: v })}
                       />
                     </div>
                   </div>
@@ -1255,14 +1418,30 @@ export function RegimenPanel({
                         {effOD > 0 ? `有效OD ${effOD.toFixed(1)}u` : '无OD'} · {(def.metabolizationRate * 2).toFixed(2)}u/t
                       </span>
                     </div>
-                    <input
-                      type="range"
-                      min={0.05}
-                      max={1}
-                      step={0.05}
-                      value={dose.purity}
-                      onChange={(e) => updateDose(dose.id, { purity: Number(e.target.value) })}
-                    />
+                    <div className="purity-slider-row">
+                      <input
+                        type="range"
+                        min={0.05}
+                        max={1}
+                        step={0.05}
+                        value={dose.purity}
+                        onChange={(e) => updateDose(dose.id, { purity: Number(e.target.value) })}
+                      />
+                      <div className="purity-input-wrap">
+                        <NumericInput
+                          className="num-input-sm purity-number-input"
+                          min={5}
+                          max={100}
+                          step={1}
+                          integer
+                          fallback={Math.round(dose.purity * 100)}
+                          ariaLabel={`${def.zhName} 纯度百分比`}
+                          value={Math.round(dose.purity * 100)}
+                          onCommit={(pct) => updateDose(dose.id, { purity: Number((pct / 100).toFixed(2)) })}
+                        />
+                        <span className="purity-input-unit mono">%</span>
+                      </div>
+                    </div>
                   </div>
 
                   {(dose.method === 'IV_DRIP' || dose.reagentId === 'seiver') && (
@@ -1272,15 +1451,15 @@ export function RegimenPanel({
                           <div className="control-label" style={{ marginBottom: 3 }}>
                             滴速 (u/tick)
                           </div>
-                          <input
-                            type="number"
+                          <NumericInput
                             className="ui-input mono"
                             style={{ width: '100%' }}
                             min={0.5}
                             max={20}
                             step={0.5}
+                            fallback={1}
                             value={dose.ivRate}
-                            onChange={(e) => updateDose(dose.id, { ivRate: Math.max(0.5, Number(e.target.value) || 1) })}
+                            onCommit={(v) => updateDose(dose.id, { ivRate: v })}
                           />
                         </div>
                       )}
@@ -1289,15 +1468,15 @@ export function RegimenPanel({
                           <div className="control-label" style={{ marginBottom: 3 }}>
                             药液温度 (K)
                           </div>
-                          <input
-                            type="number"
+                          <NumericInput
                             className="ui-input mono"
                             style={{ width: '100%' }}
                             min={5}
                             max={1200}
                             step={10}
+                            fallback={300}
                             value={dose.temp}
-                            onChange={(e) => updateDose(dose.id, { temp: Math.max(5, Number(e.target.value) || 300) })}
+                            onCommit={(v) => updateDose(dose.id, { temp: v })}
                           />
                         </div>
                       )}
@@ -1310,59 +1489,37 @@ export function RegimenPanel({
         })}
       </div>
 
+      {openPopoverEntries.map(({ dose, def, z }) => {
+        const rank = openPopoverEntries.filter((o) => o.z < z).length;
+        return (
+          <ReagentFloat
+            key={dose.id}
+            anchorEl={doseNameBtnRefs.current[dose.id] ?? null}
+            interactive
+            zIndex={Math.min(54, 20 + rank)}
+            onAnchorLost={() => closePopover(dose.id)}
+            containerRef={(node) => {
+              if (node) popoverRefs.current[dose.id] = node;
+              else delete popoverRefs.current[dose.id];
+            }}
+            id={`dose-popover-${dose.id}`}
+            role="dialog"
+            ariaLabel={`${def.zhName} 详情`}
+          >
+            {renderReagentDetails(def, true)}
+          </ReagentFloat>
+        );
+      })}
+
       {hoveredInfo && (
-        <div
-          className="reagent-hover-tooltip"
-          style={{ left: hoveredInfo.x, top: hoveredInfo.y }}
+        <ReagentFloat
+          anchorEl={hoveredInfo.anchor}
+          interactive={false}
+          onAnchorLost={() => setHoveredInfo(null)}
           role="tooltip"
         >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 12.5 }}>
-              <span className="color-dot" style={{ background: getDisplayColor(hoveredInfo.def.color) }} />
-              <span>{hoveredInfo.def.zhName}</span>
-              <span className="dose-sub">{hoveredInfo.def.enName}</span>
-            </div>
-            <span className="tag-chip mono">pH {hoveredInfo.def.ph}</span>
-          </div>
-
-          <div className="quick-chips">
-            {isNoAllergyReagent(hoveredInfo.def) && <span className="tag-chip good">无过敏</span>}
-            {isPurityIndependentEffect(hoveredInfo.def) && <span className="tag-chip">纯度无关效果</span>}
-            {patientAllergySet.has(hoveredInfo.def.id) && <span className="tag-chip danger">患者过敏原</span>}
-            {hasChemicalAllergy && isChemicalAllergyTrigger(hoveredInfo.def) && (
-              <span className="tag-chip warn">触发化学过敏</span>
-            )}
-            {hoveredInfo.def.targets.map((t) => (
-              <span key={t} className="tag-chip">
-                {t}
-              </span>
-            ))}
-          </div>
-
-          <div className="mono" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 10px', fontSize: 11 }}>
-            <span>代谢 {(hoveredInfo.def.metabolizationRate * 2).toFixed(2)}u/t</span>
-            <span style={{ color: hoveredInfo.def.overdoseThreshold > 0 ? 'var(--warn)' : 'var(--text-dim)' }}>
-              {hoveredInfo.def.overdoseThreshold > 0
-                ? `OD ${hoveredInfo.def.overdoseThreshold}u (基准${Math.round(hoveredInfo.def.defaultPurity * 100)}%)`
-                : '无OD'}
-            </span>
-            {hoveredInfo.def.inverseChemVal > 0 && (
-              <span style={{ color: 'var(--warn)' }}>
-                逆 &lt;{Math.round(hoveredInfo.def.inverseChemVal * 100)}% →{' '}
-                {REAGENTS[hoveredInfo.def.inverseChemId ?? '']?.zhName ?? '逆产物'}
-              </span>
-            )}
-          </div>
-
-          <div style={{ fontSize: 11.5, lineHeight: 1.45, color: 'var(--text)' }}>
-            {hoveredInfo.def.summaryZh}
-          </div>
-          {hoveredInfo.def.mechanicsNoteZh && (
-            <div style={{ fontSize: 10.5, lineHeight: 1.4, color: 'var(--text-muted)' }}>
-              {hoveredInfo.def.mechanicsNoteZh}
-            </div>
-          )}
-        </div>
+          {renderReagentDetails(hoveredInfo.def, true)}
+        </ReagentFloat>
       )}
     </section>
   );

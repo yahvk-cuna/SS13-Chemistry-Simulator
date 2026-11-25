@@ -10,6 +10,7 @@ import {
   rollRandomAllergies,
 } from '../engine/reagents';
 import type { EnvironmentPreset, LiverTypeId, OrganSlot, PatientConfig, WoundSeverity } from '../engine/types';
+import { NumericInput } from './NumericInput';
 
 interface PatientPanelProps {
   patient: PatientConfig;
@@ -49,6 +50,7 @@ const STAT_ZH = {
 };
 
 export function PatientPanel({ patient, onChange }: PatientPanelProps) {
+  const [openPanel, setOpenPanel] = useState(true);
   const [openOrgans, setOpenOrgans] = useState(false);
   const [openBlood, setOpenBlood] = useState(false);
   const [openEnv, setOpenEnv] = useState(false);
@@ -106,19 +108,32 @@ export function PatientPanel({ patient, onChange }: PatientPanelProps) {
   };
 
   return (
-    <section className="panel">
-      <div className="panel-header">
-        <div className="panel-title">
-          <HeartPulse size={15} style={{ color: 'var(--c-brute)' }} />
-          患者初始伤势与生理状态
-        </div>
-        <span className={`stat-badge stat-${initialStat}`}>
+    <section className="panel" aria-labelledby="patient-panel-heading">
+      <div className={`panel-header ${openPanel ? '' : 'collapsed'}`}>
+        <button
+          type="button"
+          className="panel-collapse-toggle"
+          aria-expanded={openPanel}
+          aria-controls="patient-panel-body"
+          onClick={() => setOpenPanel((v) => !v)}
+        >
+          {openPanel ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
+          <span className="panel-title" id="patient-panel-heading">
+            <HeartPulse size={15} style={{ color: 'var(--c-brute)' }} aria-hidden="true" />
+            患者初始伤势与生理状态
+          </span>
+        </button>
+        <span
+          className={`stat-badge stat-${initialStat}`}
+          aria-label={`初始生命状态：HP ${initialHP.toFixed(0)}，${STAT_ZH[initialStat]}`}
+        >
           HP {initialHP.toFixed(0)} · {STAT_ZH[initialStat]}
         </span>
       </div>
 
-      <div className="panel-body">
-        <div className="quick-chips">
+      {openPanel && (
+      <div className="panel-body" id="patient-panel-body">
+        <div className="quick-chips" role="group" aria-label="伤势快捷预设">
           <button
             type="button"
             className="btn btn-sm"
@@ -142,43 +157,56 @@ export function PatientPanel({ patient, onChange }: PatientPanelProps) {
           </button>
         </div>
 
-        {DAMAGE_FIELDS.map((f) => (
-          <div className="slider-row" key={f.key}>
-            <div className="slider-label">
-              <span className="color-dot" style={{ background: f.color }} />
-              <span>{f.label}</span>
+        <fieldset className="fieldset-group">
+          <legend className="sr-only">初始伤害数值</legend>
+          {DAMAGE_FIELDS.map((f) => (
+            <div className="slider-row" key={f.key}>
+              <label className="slider-label" htmlFor={`patient-dmg-${f.key}`}>
+                <span className="color-dot" style={{ background: f.color }} aria-hidden="true" />
+                <span>{f.label}</span>
+              </label>
+              <input
+                id={`patient-dmg-${f.key}`}
+                type="range"
+                min={0}
+                max={f.max}
+                step={1}
+                value={patient[f.key]}
+                onChange={(e) => setField(f.key, Number(e.target.value))}
+              />
+              <NumericInput
+                className="num-input-sm"
+                min={0}
+                max={400}
+                fallback={0}
+                ariaLabel={`${f.label}数值`}
+                value={patient[f.key]}
+                onCommit={(v) => setField(f.key, v)}
+              />
             </div>
-            <input
-              type="range"
-              min={0}
-              max={f.max}
-              step={1}
-              value={patient[f.key]}
-              onChange={(e) => setField(f.key, Number(e.target.value))}
-            />
-            <input
-              type="number"
-              className="num-input-sm"
-              min={0}
-              max={400}
-              value={patient[f.key]}
-              onChange={(e) => setField(f.key, Math.max(0, Number(e.target.value) || 0))}
-            />
-          </div>
-        ))}
+          ))}
+        </fieldset>
 
         {/* Organs & Liver */}
-        <button type="button" className="collapse-btn" onClick={() => setOpenOrgans((v) => !v)}>
+        <button
+          type="button"
+          className="collapse-btn"
+          aria-expanded={openOrgans}
+          aria-controls="patient-organs-panel"
+          onClick={() => setOpenOrgans((v) => !v)}
+        >
           <span>器官损伤与肝脏型号 ({LIVER_PRESETS[patient.liverType].label.split(' ')[0]})</span>
-          {openOrgans ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          {openOrgans ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
         </button>
         {openOrgans && (
-          <div className="sub-box">
+          <fieldset className="sub-box" id="patient-organs-panel">
+            <legend className="sr-only">器官损伤与肝脏型号</legend>
             <div>
-              <div className="control-label" style={{ marginBottom: 4 }}>
+              <label className="control-label" htmlFor="patient-liver-type" style={{ marginBottom: 4, display: 'block' }}>
                 肝脏类型
-              </div>
+              </label>
               <select
+                id="patient-liver-type"
                 className="ui-select"
                 style={{ width: '100%' }}
                 value={patient.liverType}
@@ -198,8 +226,11 @@ export function PatientPanel({ patient, onChange }: PatientPanelProps) {
                   : o.max;
               return (
                 <div className="slider-row" key={o.slot}>
-                  <span className="slider-label">{o.label}</span>
+                  <label className="slider-label" htmlFor={`patient-organ-${o.slot}`}>
+                    {o.label}
+                  </label>
                   <input
+                    id={`patient-organ-${o.slot}`}
                     type="range"
                     min={0}
                     max={orgMax}
@@ -208,33 +239,44 @@ export function PatientPanel({ patient, onChange }: PatientPanelProps) {
                     value={patient.organs[o.slot]}
                     onChange={(e) => setOrgan(o.slot, Number(e.target.value))}
                   />
-                  <input
-                    type="number"
+                  <NumericInput
                     className="num-input-sm"
                     min={0}
                     max={orgMax}
+                    fallback={0}
+                    ariaLabel={`${o.label}损伤数值`}
                     disabled={o.slot === 'liver' && patient.liverType === 'none'}
                     value={patient.organs[o.slot]}
-                    onChange={(e) => setOrgan(o.slot, Number(e.target.value) || 0)}
+                    onCommit={(v) => setOrgan(o.slot, v)}
                   />
                 </div>
               );
             })}
-          </div>
+          </fieldset>
         )}
 
         {/* Blood & Wounds */}
-        <button type="button" className="collapse-btn" onClick={() => setOpenBlood((v) => !v)}>
+        <button
+          type="button"
+          className="collapse-btn"
+          aria-expanded={openBlood}
+          aria-controls="patient-blood-panel"
+          onClick={() => setOpenBlood((v) => !v)}
+        >
           <span>
             血液与伤口 ({((patient.bloodVolume / BLOOD_VOLUME_NORMAL) * 100).toFixed(0)}% 血量 · 伤口 {patient.woundCount})
           </span>
-          {openBlood ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          {openBlood ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
         </button>
         {openBlood && (
-          <div className="sub-box">
+          <fieldset className="sub-box" id="patient-blood-panel">
+            <legend className="sr-only">血液与伤口</legend>
             <div className="slider-row">
-              <span className="slider-label">血量(u)</span>
+              <label className="slider-label" htmlFor="patient-blood-volume">
+                血量(u)
+              </label>
               <input
+                id="patient-blood-volume"
                 type="range"
                 min={0}
                 max={BLOOD_VOLUME_NORMAL}
@@ -242,18 +284,22 @@ export function PatientPanel({ patient, onChange }: PatientPanelProps) {
                 value={patient.bloodVolume}
                 onChange={(e) => setField('bloodVolume', Number(e.target.value))}
               />
-              <input
-                type="number"
+              <NumericInput
                 className="num-input-sm"
                 min={0}
                 max={BLOOD_VOLUME_NORMAL}
+                fallback={0}
+                ariaLabel="血量数值(u)"
                 value={patient.bloodVolume}
-                onChange={(e) => setField('bloodVolume', Number(e.target.value) || 0)}
+                onCommit={(v) => setField('bloodVolume', v)}
               />
             </div>
             <div className="slider-row">
-              <span className="slider-label">出血流速</span>
+              <label className="slider-label" htmlFor="patient-bleed-flow">
+                出血流速
+              </label>
               <input
+                id="patient-bleed-flow"
                 type="range"
                 min={0}
                 max={10}
@@ -261,22 +307,24 @@ export function PatientPanel({ patient, onChange }: PatientPanelProps) {
                 value={patient.bleedFlow}
                 onChange={(e) => setField('bleedFlow', Number(e.target.value))}
               />
-              <input
-                type="number"
+              <NumericInput
                 className="num-input-sm"
                 min={0}
                 max={30}
                 step={0.5}
+                fallback={0}
+                ariaLabel="出血流速数值"
                 value={patient.bleedFlow}
-                onChange={(e) => setField('bleedFlow', Math.max(0, Number(e.target.value) || 0))}
+                onCommit={(v) => setField('bleedFlow', v)}
               />
             </div>
             <div className="grid-2">
               <div>
-                <div className="control-label" style={{ marginBottom: 4 }}>
+                <label className="control-label" htmlFor="patient-wound-severity" style={{ marginBottom: 4, display: 'block' }}>
                   伤口严重度
-                </div>
+                </label>
                 <select
+                  id="patient-wound-severity"
                   className="ui-select"
                   style={{ width: '100%' }}
                   value={patient.woundSeverity}
@@ -299,35 +347,44 @@ export function PatientPanel({ patient, onChange }: PatientPanelProps) {
                 <div className="control-label" style={{ marginBottom: 4 }}>
                   伤口数量
                 </div>
-                <input
-                  type="number"
+                <NumericInput
                   className="ui-input mono"
                   style={{ width: '100%' }}
                   min={0}
                   max={6}
+                  integer
+                  fallback={0}
+                  ariaLabel="伤口数量"
                   disabled={patient.woundSeverity === 'none'}
                   value={patient.woundCount}
-                  onChange={(e) => setField('woundCount', Math.max(0, Number(e.target.value) || 0))}
+                  onCommit={(v) => setField('woundCount', v)}
                 />
               </div>
             </div>
-          </div>
+          </fieldset>
         )}
 
         {/* Temperature, Environment & Status */}
-        <button type="button" className="collapse-btn" onClick={() => setOpenEnv((v) => !v)}>
+        <button
+          type="button"
+          className="collapse-btn"
+          aria-expanded={openEnv}
+          aria-controls="patient-env-panel"
+          onClick={() => setOpenEnv((v) => !v)}
+        >
           <span>
             体温、代谢效率与状态 ({patient.bodyTemp.toFixed(0)}K / {(patient.bodyTemp - 273.15).toFixed(0)}°C)
           </span>
-          {openEnv ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          {openEnv ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
         </button>
         {openEnv && (
-          <div className="sub-box">
+          <fieldset className="sub-box" id="patient-env-panel">
+            <legend className="sr-only">体温、代谢效率与状态</legend>
             <div>
-              <div className="control-label" style={{ marginBottom: 4 }}>
+              <div className="control-label" id="patient-env-presets-label" style={{ marginBottom: 4 }}>
                 环境预设
               </div>
-              <div className="grid-2">
+              <div className="grid-2" role="group" aria-labelledby="patient-env-presets-label">
                 {(
                   [
                     ['normal', '常温气室 (293K)'],
@@ -340,6 +397,7 @@ export function PatientPanel({ patient, onChange }: PatientPanelProps) {
                     key={id}
                     type="button"
                     className={`btn btn-sm ${patient.environment === id ? 'btn-primary' : ''}`}
+                    aria-pressed={patient.environment === id}
                     onClick={() => applyEnvironment(id)}
                   >
                     {label}
@@ -349,8 +407,11 @@ export function PatientPanel({ patient, onChange }: PatientPanelProps) {
             </div>
 
             <div className="slider-row">
-              <span className="slider-label">初始体温</span>
+              <label className="slider-label" htmlFor="patient-body-temp">
+                初始体温
+              </label>
               <input
+                id="patient-body-temp"
                 type="range"
                 min={100}
                 max={500}
@@ -358,22 +419,25 @@ export function PatientPanel({ patient, onChange }: PatientPanelProps) {
                 value={patient.bodyTemp}
                 onChange={(e) => setField('bodyTemp', Number(e.target.value))}
               />
-              <input
-                type="number"
+              <NumericInput
                 className="num-input-sm"
                 min={50}
                 max={1000}
+                integer
+                fallback={310}
+                ariaLabel="初始体温数值(K)"
                 value={Math.round(patient.bodyTemp)}
-                onChange={(e) => setField('bodyTemp', Math.max(50, Number(e.target.value) || 310))}
+                onCommit={(v) => setField('bodyTemp', v)}
               />
             </div>
 
             <div className="grid-2">
               <div>
-                <div className="control-label" style={{ marginBottom: 4 }}>
+                <label className="control-label" htmlFor="patient-metab-eff" style={{ marginBottom: 4, display: 'block' }}>
                   饱食代谢效率
-                </div>
+                </label>
                 <select
+                  id="patient-metab-eff"
                   className="ui-select mono"
                   style={{ width: '100%' }}
                   value={patient.metabolismEfficiency}
@@ -388,20 +452,22 @@ export function PatientPanel({ patient, onChange }: PatientPanelProps) {
                 <div className="control-label" style={{ marginBottom: 4 }}>
                   衣物生物防护
                 </div>
-                <input
-                  type="number"
+                <NumericInput
                   className="ui-input mono"
                   style={{ width: '100%' }}
                   min={0}
                   max={100}
                   step={5}
+                  integer
+                  fallback={0}
+                  ariaLabel="衣物生物防护百分比"
                   value={Math.round(patient.touchProtection * 100)}
-                  onChange={(e) => setField('touchProtection', Math.min(1, Math.max(0, (Number(e.target.value) || 0) / 100)))}
+                  onCommit={(v) => setField('touchProtection', v / 100)}
                 />
               </div>
             </div>
 
-            <div className="quick-chips">
+            <div className="quick-chips" role="group" aria-label="生理与环境状态开关">
               <label className={`checkbox-pill ${patient.onFire ? 'checked' : ''}`}>
                 <input
                   type="checkbox"
@@ -445,19 +511,26 @@ export function PatientPanel({ patient, onChange }: PatientPanelProps) {
                 焦尸化
               </label>
             </div>
-          </div>
+          </fieldset>
         )}
 
         {/* Medicine & Chemical Allergies */}
-        <button type="button" className="collapse-btn" onClick={() => setOpenAllergy((v) => !v)}>
+        <button
+          type="button"
+          className="collapse-btn"
+          aria-expanded={openAllergy}
+          aria-controls="patient-allergy-panel"
+          onClick={() => setOpenAllergy((v) => !v)}
+        >
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <ShieldAlert size={13} style={{ color: allergySummaryParts.length > 0 ? 'var(--danger)' : 'var(--text-muted)' }} />
+            <ShieldAlert size={13} style={{ color: allergySummaryParts.length > 0 ? 'var(--danger)' : 'var(--text-muted)' }} aria-hidden="true" />
             <span>药物过敏与免疫异常 ({allergySummaryLabel})</span>
           </span>
-          {openAllergy ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          {openAllergy ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
         </button>
         {openAllergy && (
-          <div className="sub-box">
+          <fieldset className="sub-box" id="patient-allergy-panel">
+            <legend className="sr-only">药物过敏与免疫异常</legend>
             <label
               className={`checkbox-pill ${patient.chemicalAllergy ? 'checked' : ''}`}
               style={{ justifyContent: 'space-between', width: '100%' }}
@@ -475,9 +548,13 @@ export function PatientPanel({ patient, onChange }: PatientPanelProps) {
               代谢存量 ≥1u 的非豁免药物时按概率引起毒素、失血（下限 70%）与呼吸受阻；豁免所有「无过敏」药物及甘露醇、突变酮，<strong>不受肾上腺素阻断</strong>。
             </div>
 
-            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 7, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div
+              role="group"
+              aria-labelledby="patient-extreme-allergy-label"
+              style={{ borderTop: '1px solid var(--border)', paddingTop: 7, display: 'flex', flexDirection: 'column', gap: 6 }}
+            >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 5, flexWrap: 'wrap' }}>
-                <span className="control-label">极端药物过敏 ({patient.allergies.length})</span>
+                <span className="control-label" id="patient-extreme-allergy-label">极端药物过敏 ({patient.allergies.length})</span>
                 <div style={{ display: 'flex', gap: 5 }}>
                   <button
                     type="button"
@@ -485,7 +562,7 @@ export function PatientPanel({ patient, onChange }: PatientPanelProps) {
                     title="按上游 GLOB.allergy_reagent_blacklist 规则从合规药物池随机抽取 6 种过敏原"
                     onClick={() => setField('allergies', rollRandomAllergies(6))}
                   >
-                    <Dices size={11} />
+                    <Dices size={11} aria-hidden="true" />
                     按上游随机抽 6 种
                   </button>
                   {patient.allergies.length > 0 && (
@@ -501,7 +578,7 @@ export function PatientPanel({ patient, onChange }: PatientPanelProps) {
               </div>
 
               {patient.allergies.length > 0 && (
-                <div className="quick-chips">
+                <div className="quick-chips" role="group" aria-label="已选过敏原">
                   {patient.allergies.map((id) => {
                     const r = REAGENTS[id];
                     if (!r) return null;
@@ -513,14 +590,15 @@ export function PatientPanel({ patient, onChange }: PatientPanelProps) {
                         className="tag-chip danger"
                         style={{ cursor: 'pointer' }}
                         title="点击移除此过敏原"
+                        aria-label={`移除过敏原 ${r.zhName}`}
                         onClick={() => toggleAllergyId(id)}
                       >
-                        <span className="color-dot" style={{ background: getDisplayColor(r.color) }} />
+                        <span className="color-dot" style={{ background: getDisplayColor(r.color) }} aria-hidden="true" />
                         <span>
                           {r.zhName}
                           {!inPool ? ' (沙盒)' : ''}
                         </span>
-                        <X size={10} />
+                        <X size={10} aria-hidden="true" />
                       </button>
                     );
                   })}
@@ -532,6 +610,7 @@ export function PatientPanel({ patient, onChange }: PatientPanelProps) {
                   type="text"
                   className="ui-input"
                   style={{ flex: 1, minWidth: 0, fontSize: 11.5 }}
+                  aria-label="搜索过敏原（中/英文/别名）"
                   placeholder="搜索过敏原（中/英文/别名）..."
                   value={allergyQuery}
                   onChange={(e) => setAllergyQuery(e.target.value)}
@@ -546,7 +625,7 @@ export function PatientPanel({ patient, onChange }: PatientPanelProps) {
                 </label>
               </div>
 
-              <div className="allergy-picker-list">
+              <div className="allergy-picker-list" role="group" aria-label="过敏原可选列表">
                 {allergyPoolList.map((r) => {
                   const selected = patient.allergies.includes(r.id);
                   const inPool = isExtremeAllergyCandidate(r);
@@ -555,10 +634,11 @@ export function PatientPanel({ patient, onChange }: PatientPanelProps) {
                       key={r.id}
                       type="button"
                       className={`allergy-picker-row ${selected ? 'selected' : ''}`}
+                      aria-pressed={selected}
                       onClick={() => toggleAllergyId(r.id)}
                     >
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
-                        <span className="color-dot" style={{ background: getDisplayColor(r.color) }} />
+                        <span className="color-dot" style={{ background: getDisplayColor(r.color) }} aria-hidden="true" />
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {r.zhName}
                         </span>
@@ -578,9 +658,10 @@ export function PatientPanel({ patient, onChange }: PatientPanelProps) {
                 无肾上腺素时每 tick +6 毒 / +6u 组胺并有 19% 概率呕吐与随机内脏伤；肾上腺素可阻断但暂停过敏原消耗，需苯海拉明清组胺并清血。
               </div>
             </div>
-          </div>
+          </fieldset>
         )}
       </div>
+      )}
     </section>
   );
 }

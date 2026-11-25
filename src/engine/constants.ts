@@ -1,3 +1,12 @@
+import type { MobStat } from './types';
+
+export const MOB_STAT_ZH: Record<MobStat, string> = {
+  STABLE: '稳定存活',
+  SOFT_CRIT: '轻度危急',
+  HARD_CRIT: '重度危急',
+  DEAD: '死亡',
+};
+
 export const SSMOBS_DT = 2; // SSmobs.wait = 2 SECONDS
 export const REAGENTS_METABOLISM = 0.2; // u/s (0.4u per 2s tick)
 export const REM = 1 / (REAGENTS_METABOLISM * SSMOBS_DT); // 2.5

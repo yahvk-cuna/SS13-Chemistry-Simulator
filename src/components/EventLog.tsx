@@ -22,15 +22,15 @@ export function EventLog({ events, onJumpToTime }: EventLogProps) {
   }, [events, filter]);
 
   return (
-    <section className="panel">
+    <section className="panel" aria-labelledby="event-log-heading">
       <div className="panel-header">
-        <div className="panel-title">
-          <ScrollText size={15} style={{ color: 'var(--warn)' }} />
+        <div className="panel-title" id="event-log-heading">
+          <ScrollText size={15} style={{ color: 'var(--warn)' }} aria-hidden="true" />
           生理与药理事件日志 ({filtered.length})
         </div>
       </div>
       <div className="panel-body">
-        <div className="quick-chips">
+        <div className="quick-chips" role="group" aria-label="事件类型筛选">
           {(
             [
               ['all', '全部'],
@@ -45,6 +45,7 @@ export function EventLog({ events, onJumpToTime }: EventLogProps) {
               key={id}
               type="button"
               className={`btn btn-sm ${filter === id ? 'btn-primary' : ''}`}
+              aria-pressed={filter === id}
               onClick={() => setFilter(id)}
             >
               {label}
@@ -52,7 +53,7 @@ export function EventLog({ events, onJumpToTime }: EventLogProps) {
           ))}
         </div>
 
-        <div className="event-list">
+        <div className="event-list" role="region" aria-label={`事件列表（${filtered.length} 条）`}>
           {filtered.length === 0 ? (
             <div className="dose-sub" style={{ textAlign: 'center', padding: 14 }}>
               当前筛选下无事件记录。
@@ -63,6 +64,7 @@ export function EventLog({ events, onJumpToTime }: EventLogProps) {
                 key={idx}
                 type="button"
                 className={`event-item sev-${ev.severity}`}
+                aria-label={`跳转到 ${ev.time} 秒：${ev.title}，${ev.detail}`}
                 onClick={() => onJumpToTime(ev.time)}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', gap: 8 }}>

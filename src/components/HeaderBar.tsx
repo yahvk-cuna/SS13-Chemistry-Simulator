@@ -76,7 +76,9 @@ export function HeaderBar({
           <FlaskConical size={18} />
         </div>
         <div>
-          <div className="brand-title">纳米传讯医疗部 · 天关13 药物代谢与伤势模拟器</div>
+          <div className="brand-title">
+            <span className="brand-org">纳米传讯医疗部 · </span>天关13 药物代谢与伤势模拟器
+          </div>
           <div className="brand-sub">
             基于 Tianguan13 源码 & TG 中文 Wiki 药理机制（2s / tick · 多药联用 / 纯度逆反应 / 过量 / 器官损伤）
           </div>

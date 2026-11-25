@@ -109,6 +109,27 @@ export function App() {
   const [shareModalOpen, setShareModalOpen] = useState<boolean>(false);
   const [aboutOpen, setAboutOpen] = useState<boolean>(false);
   const [scenarioVersion, setScenarioVersion] = useState<number>(0);
+  const [isCompact, setIsCompact] = useState<boolean>(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return false;
+    }
+    return window.matchMedia('(max-width: 1180px)').matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return;
+    }
+    const mql = window.matchMedia('(max-width: 1180px)');
+    const updateMatch = () => setIsCompact(mql.matches);
+    updateMatch();
+    if (typeof mql.addEventListener === 'function') {
+      mql.addEventListener('change', updateMatch);
+      return () => mql.removeEventListener('change', updateMatch);
+    }
+    mql.addListener(updateMatch);
+    return () => mql.removeListener(updateMatch);
+  }, []);
   const toastSeqRef = useRef<number>(0);
   const toastRemainingRef = useRef<number>(DEFAULT_TOAST_DURATION_MS);
   const [toastPaused, setToastPaused] = useState<boolean>(false);
@@ -391,44 +412,50 @@ export function App() {
           />
         </div>
 
-        {/* Center Column: Summary KPIs & Synchronized Interactive Charts */}
-        <div id="result-section" className="col-stack col-center">
-          <SummaryStrip
-            summary={result.summary}
-            baselineSummary={baselineResult ? baselineResult.summary : null}
-          />
-          <TimelineCharts
-            result={result}
-            baselineResult={baselineResult}
-            selectedTime={selectedTime}
-            onSelectTime={(t) => {
-              setIsPlaying(false);
-              setSelectedTime(t);
-            }}
-            isPlaying={isPlaying}
-            onTogglePlay={() => {
-              if (!isPlaying && selectedTime >= actualDurationSeconds) setSelectedTime(0);
-              setIsPlaying((v) => !v);
-            }}
-            playSpeed={playSpeed}
-            onPlaySpeedChange={setPlaySpeed}
-            onResetPlay={() => {
-              setIsPlaying(false);
-              setSelectedTime(0);
-            }}
-          />
-        </div>
+        {/* Center & Right Columns (wrapped in .col-results-group for 2-column independent scroll) */}
+        <div className="col-results-group">
+          <div id="result-section" className="col-stack col-center">
+            <SummaryStrip
+              summary={result.summary}
+              baselineSummary={baselineResult ? baselineResult.summary : null}
+            />
+            <TimelineCharts
+              result={result}
+              baselineResult={baselineResult}
+              selectedTime={selectedTime}
+              onSelectTime={(t) => {
+                setIsPlaying(false);
+                setSelectedTime(t);
+              }}
+              isPlaying={isPlaying}
+              onTogglePlay={() => {
+                if (!isPlaying && selectedTime >= actualDurationSeconds) setSelectedTime(0);
+                setIsPlaying((v) => !v);
+              }}
+              playSpeed={playSpeed}
+              onPlaySpeedChange={setPlaySpeed}
+              onResetPlay={() => {
+                setIsPlaying(false);
+                setSelectedTime(0);
+              }}
+              isCompact={isCompact}
+            />
+          </div>
 
-        {/* Right Column: Tick Inspector & Event Log */}
-        <div className="col-stack col-right">
-          <TickInspector snapshot={currentSnap} />
-          <EventLog
-            events={result.events}
-            onJumpToTime={(t) => {
-              setIsPlaying(false);
-              setSelectedTime(t);
-            }}
-          />
+          {/* Right Column: Tick Inspector & (on 3-col desktop) Event Log */}
+          <div className="col-stack col-right">
+            <TickInspector snapshot={currentSnap} />
+            {!isCompact && (
+              <EventLog
+                events={result.events}
+                selectedTime={selectedTime}
+                onJumpToTime={(t) => {
+                  setIsPlaying(false);
+                  setSelectedTime(t);
+                }}
+              />
+            )}
+          </div>
         </div>
       </main>
 

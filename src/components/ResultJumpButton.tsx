@@ -7,38 +7,14 @@ interface ResultJumpButtonProps {
   targetId?: string;
 }
 
-const COMPACT_MEDIA_QUERY = '(max-width: 1180px)';
-
 export function ResultJumpButton({
   summary,
   targetId = 'result-section',
 }: ResultJumpButtonProps) {
-  const [isCompactViewport, setIsCompactViewport] = useState<boolean>(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-      return false;
-    }
-    return window.matchMedia(COMPACT_MEDIA_QUERY).matches;
-  });
   const [isResultInView, setIsResultInView] = useState<boolean>(true);
 
   useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-      return;
-    }
-    const mql = window.matchMedia(COMPACT_MEDIA_QUERY);
-    const updateMatch = () => setIsCompactViewport(mql.matches);
-    updateMatch();
-
-    if (typeof mql.addEventListener === 'function') {
-      mql.addEventListener('change', updateMatch);
-      return () => mql.removeEventListener('change', updateMatch);
-    }
-    mql.addListener(updateMatch);
-    return () => mql.removeListener(updateMatch);
-  }, []);
-
-  useEffect(() => {
-    if (!isCompactViewport || typeof document === 'undefined') {
+    if (typeof document === 'undefined') {
       return;
     }
     const target = document.getElementById(targetId);
@@ -66,9 +42,9 @@ export function ResultJumpButton({
 
     observer.observe(target);
     return () => observer.disconnect();
-  }, [isCompactViewport, targetId]);
+  }, [targetId]);
 
-  if (!isCompactViewport || isResultInView) {
+  if (isResultInView) {
     return null;
   }
 

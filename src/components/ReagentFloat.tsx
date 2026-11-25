@@ -33,7 +33,27 @@ function computeFloatPosition(rect: DOMRect, width: number, height: number, vw: 
 }
 
 function isAnchorOutOfView(anchor: HTMLElement, rect: DOMRect, vw: number, vh: number): boolean {
-  return !anchor.isConnected || rect.bottom <= 0 || rect.top >= vh || rect.right <= 0 || rect.left >= vw;
+  if (!anchor.isConnected) return true;
+  let clipTop = 0;
+  let clipBottom = vh;
+  let clipLeft = 0;
+  let clipRight = vw;
+
+  const scrollCol = anchor.closest('.col-left, .col-center, .col-right, .col-results-group');
+  if (scrollCol) {
+    const colRect = scrollCol.getBoundingClientRect();
+    clipTop = Math.max(clipTop, colRect.top);
+    clipBottom = Math.min(clipBottom, colRect.bottom);
+    clipLeft = Math.max(clipLeft, colRect.left);
+    clipRight = Math.min(clipRight, colRect.right);
+  }
+
+  return (
+    rect.bottom <= clipTop ||
+    rect.top >= clipBottom ||
+    rect.right <= clipLeft ||
+    rect.left >= clipRight
+  );
 }
 
 interface ReagentFloatProps {
